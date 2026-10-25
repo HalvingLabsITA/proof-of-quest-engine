@@ -1,0 +1,8 @@
+# Intestazioni di sicurezza per tutte le pagine (Cloudflare Workers Static Assets).
+# CSP: script e stili solo dal sito (inline compresi: il gioco è un file unico), font da Google Fonts,
+# dati solo dal sito e da mempool.space. Blocca script esterni e l'invio di dati ad altri siti.
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://mempool.space; object-src 'none'; base-uri 'self'; form-action 'self'

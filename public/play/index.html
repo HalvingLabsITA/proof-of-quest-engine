@@ -1,0 +1,2429 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Proof of Quest</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap">
+<style>
+/* Layout: cabinato arcade. Schermo di gioco a sinistra, "etichetta della cartuccia" (il blocco in gioco) a destra; su telefono si impila.
+   Palette: 4 tonalità dell'era di halving corrente, sostituite live dal JS quando attraversi un halving. Look unico, scuro. */
+:root{
+  --c0:#140b04; --c1:#5c2a07; --c2:#f7931a; --c3:#ffe7c2;
+  --bg:color-mix(in srgb, var(--c0) 70%, #000);
+  --line:var(--c1);
+  --font-display:"Press Start 2P","Courier New",monospace;
+  --font-body:"VT323","Courier New",monospace;
+  color-scheme:dark;
+}
+html{background:var(--bg)}
+body{background:var(--bg);color:var(--c3);font-family:var(--font-body);font-size:20px;line-height:1.2;transition:background-color .6s}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+.wrap{max-width:1140px;margin:0 auto;padding-inline:16px;padding-block:16px 40px;display:grid;gap:14px}
+.top{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px 16px}
+.brand{font-family:var(--font-display);font-size:clamp(13px,2.2vw,18px);letter-spacing:.08em;color:var(--c2);margin:0;text-wrap:balance}
+.brand span{display:block;font-family:var(--font-body);font-size:19px;letter-spacing:0;color:var(--c3);opacity:.8;margin-top:6px}
+.pill{font-family:var(--font-display);font-size:9px;letter-spacing:.08em;display:inline-flex;gap:8px;align-items:center;padding:8px 10px;border:2px solid var(--line);color:var(--c3)}
+.dot{width:8px;height:8px;background:var(--c1);flex:none}
+.dot.on{background:var(--c2);animation:blink 1.4s steps(2,start) infinite}
+@keyframes blink{50%{opacity:.25}}
+.main{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:16px;align-items:start}
+@media (max-width:900px){.main{grid-template-columns:minmax(0,1fr)}}
+.cab{background:var(--c0);border:3px solid var(--c1);padding:10px;display:grid;gap:10px;min-width:0}
+.screen{position:relative;container-type:inline-size;aspect-ratio:4/3;width:100%;max-width:100%;background:var(--c0);overflow:hidden;outline:2px solid #000}
+#cv{position:absolute;inset:0;width:100%;height:100%;image-rendering:pixelated;image-rendering:crisp-edges;display:block}
+/* livello delle sfere a piena risoluzione: ogni pixel della sfera ha la stessa misura, bordi netti a qualsiasi ingrandimento */
+#ocv{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none}
+.scan{position:absolute;inset:0;pointer-events:none;background:repeating-linear-gradient(to bottom,rgba(0,0,0,.16) 0 1px,transparent 1px 3px);box-shadow:inset 0 0 7cqw rgba(0,0,0,.6)}
+/* Finestre stile JRPG */
+.win{position:absolute;background:var(--c0);color:var(--c3);border:.55cqw solid var(--c3);outline:.5cqw solid var(--c0);border-radius:.9cqw;padding:1.4cqw 2.2cqw;font-family:var(--font-body);font-size:4.4cqw;line-height:1.08}
+/* HUD sulla mappa: numero del blocco in piccolo in alto, vita e sats nelle due sfere in basso (le sfere sono disegnate nel canvas, i numeri qui) */
+#hud{top:1.4cqw;left:1.8cqw;padding:0;background:none;border:0;outline:0;box-shadow:none;font-family:var(--font-display);font-size:2.3cqw;line-height:1;color:var(--c3);opacity:.9;text-shadow:.3cqw 0 0 var(--c0),-.3cqw 0 0 var(--c0),0 .3cqw 0 var(--c0),0 -.3cqw 0 var(--c0)}
+#orbs{position:absolute;inset:0;pointer-events:none}
+#orbs span{position:absolute;font-family:var(--font-display);text-align:center;line-height:1;white-space:nowrap}
+/* posizione e dimensione delle sfere in pixel nativi (--r raggio, --lx/--rx centri, --cy altezza), 1 pixel nativo = 0,390625cqw */
+#orbs{--r:12;--lx:16;--rx:239;--cy:175;--u:.390625cqw}
+#orbs .n{width:calc(var(--r) * 2 * var(--u));top:calc((var(--cy) - var(--r) * .42) * var(--u))}
+#orbs .l{width:calc(var(--r) * 2 * var(--u));font-size:calc(var(--r) * .104cqw);top:calc((var(--cy) + var(--r) * .27) * var(--u))}
+#oHp,#oHpL{left:calc((var(--lx) - var(--r)) * var(--u));color:#fff4e0}
+#oSats,#oSatsL{left:calc((var(--rx) - var(--r)) * var(--u));color:#3a2a0a}
+#oHp.low{animation:blink 1s steps(2,start) infinite}
+#oLv{left:calc((var(--lx) - var(--r)) * var(--u));top:calc((var(--cy) - var(--r) - 13) * var(--u));font-size:1.9cqw;color:var(--c0);background:var(--c2);border:.4cqw solid var(--c0);outline:.3cqw solid var(--c2);border-radius:.6cqw;padding:.5cqw .9cqw .4cqw}
+#dlg{left:2.2cqw;right:2.2cqw;bottom:2.2cqw;min-height:19cqw;cursor:pointer}
+#dlgMore{position:absolute;right:2.4cqw;bottom:1.2cqw;font-family:var(--font-display);font-size:2.2cqw;animation:blink .8s steps(2,start) infinite}
+#menu{right:2.2cqw;bottom:2.2cqw;width:74cqw}
+#ebar{top:calc(var(--ay,0px) + 2.2cqw);left:2.2cqw;width:48cqw;font-family:var(--font-display);font-size:2.2cqw;padding:1.2cqw 2cqw;white-space:nowrap}
+#hbar{right:2.2cqw;top:calc(var(--ay,0px) + 36cqw);width:46cqw;font-size:3.9cqw;padding:1.2cqw 2cqw;white-space:nowrap}
+#hbar .nm{font-family:var(--font-display);font-size:2.2cqw;display:flex;justify-content:space-between}
+#ebar .nm{overflow:hidden;text-overflow:ellipsis}
+#ebar .intent{font-family:var(--font-body);font-size:3.8cqw;color:var(--c2);margin-top:.6cqw}
+#ebar .bar,#hbar .bar{width:100%}
+#hbar .rk{font-family:var(--font-display);font-size:1.7cqw;color:var(--c2);margin-top:.5cqw}
+#hbar .low{color:var(--c2);animation:blink 1s steps(2,start) infinite}
+#log{left:13cqw;right:13cqw;bottom:1.6cqw;font-size:3.6cqw;padding:1cqw 2cqw;pointer-events:none}
+.bar{height:1.2cqw;background:var(--c1);margin-top:.8cqw;width:34cqw}
+.bar i{display:block;height:100%;background:var(--c2);transition:width .3s}
+#center{inset:4cqw 5cqw;display:flex;flex-direction:column;gap:1.6cqw;overflow:hidden}
+#cbody{flex:1 1 auto;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:1.6cqw;scrollbar-width:thin;scrollbar-color:var(--c1) transparent}
+#cmenu{flex:none}
+#center.clear{overflow:auto}
+#cside{display:none}
+#center.title{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);grid-template-rows:auto 1fr;gap:1.4cqw 3cqw;align-items:start;justify-items:stretch;text-align:left}
+#center.title #cbody{grid-column:1/-1;align-items:center;text-align:center}
+#center.title #cmenu{grid-column:1}
+#center.title #cside{display:block;grid-column:2;border:.4cqw solid var(--c1);padding:1.2cqw 1.6cqw;background:color-mix(in srgb,var(--c0) 82%,transparent)}
+#cside .support{display:block;margin-top:1.2cqw;padding-top:1cqw;border-top:.3cqw dashed var(--c1);color:var(--c2);text-decoration:none;font-size:2.8cqw;letter-spacing:.04em}
+#cside .support:hover,#cside .support:focus-visible{color:var(--c3);text-decoration:underline}
+body.touch #cside .support{font-size:3.6cqw;padding:1.6cqw 0 .6cqw}
+#center.title .menu{width:100%}
+body:not(.touch) #center.title .logo{font-size:5cqw}
+body:not(.touch) #center.title .menu button{font-size:3.6cqw;padding-top:.15cqw;padding-bottom:.15cqw}
+body:not(.touch) #center.title .menu button small{font-size:2.9cqw}
+.top5 h4{font-family:var(--font-display);font-weight:400;font-size:1.9cqw;letter-spacing:.08em;color:var(--c2);margin:0 0 1cqw}
+.top5 ol{list-style:none;margin:0;padding:0;display:grid;gap:.2cqw;font-size:3.6cqw;font-variant-numeric:tabular-nums}
+.top5 li{display:grid;grid-template-columns:3.4cqw minmax(0,1fr) auto;gap:1.2cqw;align-items:baseline}
+.top5 li span:nth-child(2){overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.top5 .me,.board .me{color:var(--c2)}
+.top5 p{margin:0;font-size:3.2cqw;opacity:.8}
+.board{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums;font-size:3.8cqw}
+.board th{font-family:var(--font-display);font-weight:400;font-size:1.7cqw;letter-spacing:.06em;color:var(--c2);text-align:left;padding:.6cqw .8cqw;border-bottom:.3cqw solid var(--c1)}
+.board td{padding:.3cqw .8cqw;border-bottom:.2cqw dashed var(--c1)}
+.board td.n,.board th.n{text-align:right}
+#pqName{font:inherit;font-size:5cqw;width:100%;background:var(--c0);color:var(--c3);border:.4cqw solid var(--c2);padding:.6cqw 1.4cqw;text-transform:none}
+#pqName:focus-visible{outline:.4cqw solid var(--c3)}
+#pqPass{font-family:var(--font-display);font-size:3.4cqw;width:100%;background:var(--c0);color:var(--c3);border:.4cqw solid var(--c2);padding:1cqw 1.4cqw;letter-spacing:.15em;text-transform:uppercase}
+#pqPass:focus-visible{outline:.4cqw solid var(--c3)}
+#pqPass::placeholder{color:var(--c1)}
+#center .pw{font-family:var(--font-display);font-size:3.6cqw;color:var(--c3);text-align:center;border:.4cqw solid var(--c2);padding:1.6cqw 1cqw;letter-spacing:.12em;user-select:all;-webkit-user-select:all;white-space:nowrap}
+#center.clear #cbody{flex:none;overflow:visible;align-items:center}
+#center.clear{background:transparent;border-color:transparent;outline:none;justify-content:safe center;gap:1.4cqw;align-items:center;text-align:center;inset:3cqw}
+#center h2{font-family:var(--font-display);font-size:3.2cqw;color:var(--c2);margin:0;line-height:1.4}
+#center p{margin:0}
+#center .legend{color:var(--c2)}
+#center .epi{opacity:.8;font-style:italic}
+#center .facts{display:grid;grid-template-columns:auto 1fr;gap:.2cqw 3cqw;margin:0}
+#center .facts dt{opacity:.75}
+#center .facts dd{margin:0;font-variant-numeric:tabular-nums}
+.chips{display:flex;flex-wrap:wrap;gap:1.2cqw}
+.chip{border:.4cqw solid var(--c2);color:var(--c2);padding:.2cqw 1.4cqw;font-size:3.6cqw}
+.logo{font-family:var(--font-display);font-size:5.8cqw;line-height:1.25;color:var(--c3);margin:0;letter-spacing:.04em;text-shadow:.8cqw .8cqw 0 var(--c1)}
+.logo b{color:var(--c2);font-weight:400}
+.tag{font-size:4.2cqw}
+.status{font-family:var(--font-display);font-size:1.9cqw;opacity:.85;line-height:1.6}
+.nonce{font-family:var(--font-display);font-size:2cqw;color:var(--c2);word-break:break-all}
+#hIn{font:inherit;font-size:5cqw;width:100%;background:var(--c0);color:var(--c3);border:.4cqw solid var(--c2);padding:.6cqw 1.4cqw}
+#hIn:focus-visible{outline:.4cqw solid var(--c3)}
+/* Menu */
+.menu{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(var(--cols,1),minmax(0,1fr));gap:.4cqw 2cqw}
+.menu button{all:unset;cursor:pointer;display:block;width:100%;font-family:var(--font-body);font-size:4.4cqw;line-height:1.1;padding:.3cqw 0 .3cqw 3.6cqw;position:relative;color:var(--c3)}
+.menu button small{display:block;font-size:3.3cqw;opacity:.7}
+.menu button.sel::before{content:"▶";position:absolute;left:0;top:.3cqw;color:var(--c2);animation:blink 1s steps(2,start) infinite}
+.menu button[aria-disabled="true"]{opacity:.38;cursor:not-allowed}
+.menu button:focus-visible{outline:.3cqw dashed var(--c2)}
+#center.clear .menu{width:min(74cqw,100%);text-align:left;margin-top:.6cqw;gap:0 2cqw}
+#center.clear .menu button{font-size:4cqw}
+#center.clear .menu button small{font-size:2.9cqw}
+#toast{top:2.2cqw;left:50%;transform:translateX(-50%);font-family:var(--font-display);font-size:2.1cqw;line-height:1.7;color:var(--c0);background:var(--c2);border-color:var(--c3);text-align:center;width:max-content;max-width:90cqw;z-index:5}
+/* Controlli */
+.pad{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.dpad{display:grid;grid-template-columns:repeat(3,44px);grid-template-rows:repeat(3,44px);gap:2px}
+.pad button{font-family:var(--font-display);font-size:12px;color:var(--c3);background:var(--c1);border:2px solid var(--c3);cursor:pointer;touch-action:manipulation;user-select:none;-webkit-user-select:none}
+.pad button:active{background:var(--c2);color:var(--c0)}
+.pad button:focus-visible{outline:2px solid var(--c2);outline-offset:2px}
+.dpad [data-a=up]{grid-area:1/2}.dpad [data-a=left]{grid-area:2/1}.dpad [data-a=right]{grid-area:2/3}.dpad [data-a=down]{grid-area:3/2}
+.ab{display:flex;gap:12px}
+.ab button{width:58px;height:58px;border-radius:50%;font-size:14px}
+.ab{display:grid;grid-template-columns:58px 58px;gap:8px 12px;justify-items:center}
+.pad .mbtn{width:auto;height:26px;border-radius:4px;padding:0 10px;font-size:8px}
+.ab .mbtn{grid-column:1/3}
+.mid{flex:1 1 0;min-width:90px;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:10px;align-self:stretch}
+@media (max-width:600px){.mid{order:3;flex:1 1 100%;align-self:auto}}
+.mid .keys{flex:none}
+.keys{margin:0;font-size:18px;opacity:.75;flex:1 1 160px;text-align:center}
+@media (pointer:coarse){.keys{display:none}}
+/* Etichetta del blocco */
+.side{display:grid;gap:14px;min-width:0}
+.card{border:2px solid var(--line);padding:14px 16px;display:grid;gap:10px;min-width:0;background:color-mix(in srgb,var(--c0) 82%,#000)}
+.card h3{font-family:var(--font-display);font-size:9px;letter-spacing:.12em;color:var(--c2);margin:0;line-height:1.6}
+.height{font-family:var(--font-display);font-size:20px;margin:0;font-variant-numeric:tabular-nums}
+.legendTxt{margin:0;color:var(--c2)}
+.hash{font-family:var(--font-display);font-size:8.5px;line-height:1.8;word-break:break-all;margin:0;opacity:.95}
+.hash .z{color:var(--c2)}
+.kv{display:grid;grid-template-columns:auto minmax(0,1fr);gap:0;margin:0;font-variant-numeric:tabular-nums}
+.kv dt,.kv dd{padding:5px 0;border-bottom:1px dashed var(--c1)}
+.kv dd{padding-left:14px;white-space:nowrap}
+.kv dt:last-of-type,.kv dd:last-of-type{border-bottom:0}
+.kv dt{opacity:.7}
+.kv dd{margin:0;text-align:right;overflow-wrap:anywhere}
+.map{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.map li{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:0 10px;padding-bottom:6px;border-bottom:1px dashed var(--c1)}
+.map li:last-child{border-bottom:0;padding-bottom:0}
+.map li span{opacity:.7;min-width:0}
+.map li b{font-weight:400;color:var(--c3);margin-left:auto;text-align:right;min-width:0}
+.map li b::before{content:"→ ";color:var(--c2)}
+.verify{color:var(--c2);font-family:var(--font-display);font-size:9px;line-height:1.8;text-decoration:none;border-bottom:2px solid var(--c1);justify-self:start}
+.verify:hover,.verify:focus-visible{border-color:var(--c2)}
+.note{margin:0;font-size:18px;opacity:.8}
+/* Schermi stretti (telefono): testo più grande, il corpo delle finestre scorre */
+@container (max-width: 420px){
+  .win{font-size:5.4cqw}
+  #hud{font-size:2.8cqw}
+  .menu button{font-size:5.2cqw}
+  .menu button small{display:none}
+  #center.clear .menu button{font-size:4.8cqw}
+  #center h2{font-size:3.8cqw}
+  .status,.nonce{font-size:2.6cqw}
+  #toast,#ebar{font-size:2.8cqw}
+  #hbar{font-size:4.6cqw;top:calc(var(--ay,0px) + 35cqw);width:50cqw}
+  #hbar .nm{font-size:2.8cqw}
+  #ebar .intent{font-size:4.6cqw}
+  #log{font-size:4.4cqw}
+  #center .epi{display:none}
+  .top5 ol{font-size:4.2cqw}
+  .top5 li:nth-child(n+4):not(.me){display:none} /* sul telefono bastano i primi 3 (più la propria riga) */
+  .top5 h4{font-size:2.4cqw}
+  .board{font-size:4.4cqw}
+}
+/* STORY: testi della presentazione animata */
+#story{position:absolute;left:5cqw;right:5cqw;text-align:center;font-family:var(--font-display);font-size:2.5cqw;line-height:1.75;color:var(--c3);white-space:pre-line;pointer-events:none;text-shadow:.3cqw 0 0 var(--c0),-.3cqw 0 0 var(--c0),0 .3cqw 0 var(--c0),0 -.3cqw 0 var(--c0)}
+#story.big{transform:translateY(-50%)}
+#story .logo{font-size:7cqw;line-height:1.2;margin:0;color:var(--c3)}
+#story .logo b{color:var(--c2);font-weight:normal}
+#story .press{margin:5cqw 0 0;font-size:2.4cqw;animation:blink 1s steps(2,start) infinite}
+@container (max-width: 420px){#story{font-size:3.1cqw}}
+.board .rk{font-size:.75em;opacity:.85;white-space:nowrap}
+/* Computer: niente pulsanti a schermo, solo la riga dei tasti. Lo schermo di gioco è grande quanto la finestra (4:3), i riquadri del blocco vanno sotto, affiancati */
+body:not(.touch) .wrap{max-width:none;padding-inline:24px}
+body:not(.touch) .main{grid-template-columns:minmax(0,1fr)}
+body:not(.touch) .cab{width:min(100%,calc((100vh - 150px) * 4 / 3));justify-self:center}
+body:not(.touch) .side .card{align-content:start;height:100%}
+body:not(.touch) .top{width:min(100%,calc((100vh - 150px) * 4 / 3));justify-self:center;margin-inline:auto}
+body:not(.touch) .side{grid-template-columns:repeat(auto-fit,minmax(280px,1fr));grid-auto-rows:1fr;align-items:stretch;width:min(100%,max(calc((100vh - 150px) * 4 / 3),880px));justify-self:center}
+body:not(.touch) .dpad,body:not(.touch) .ab,body:not(.touch) .mid .mbtn{display:none}
+/* Telefono: gioco a tutto schermo, controlli trasparenti sopra la mappa, sfere in alto */
+body.touch{overflow:hidden;overscroll-behavior:none}
+body.touch .wrap{padding:0;max-width:none;display:block}
+body.touch .top,body.touch .side{display:none}
+body.touch .main{display:block}
+body.touch .cab{position:fixed;inset:0;padding:0;border:0;display:block;touch-action:none}
+body.touch .screen{width:100vw;height:100vh;height:100dvh;aspect-ratio:auto;outline:0}
+body.touch #cv{height:auto}
+@media (orientation:landscape){body.touch .screen{width:min(100vw,133.3vh);width:min(100vw,133.3dvh);height:auto;aspect-ratio:4/3;margin:0 auto}}
+body.touch .pad{position:absolute;inset:0;pointer-events:none;display:block}
+body.touch .pad button{pointer-events:auto;background:color-mix(in srgb,var(--c1) 38%,transparent);border-color:color-mix(in srgb,var(--c3) 55%,transparent);color:color-mix(in srgb,var(--c3) 85%,transparent)}
+body.touch .pad button:active{background:var(--c2);color:var(--c0);border-color:var(--c3)}
+body.touch .dpad{position:absolute;left:12px;bottom:calc(14px + env(safe-area-inset-bottom));grid-template-columns:repeat(3,48px);grid-template-rows:repeat(3,48px)}
+body.touch .ab{position:absolute;right:12px;bottom:calc(18px + env(safe-area-inset-bottom));grid-template-columns:62px 62px;gap:10px 12px}
+body.touch .ab button:not(.mbtn){width:62px;height:62px;font-size:13px}
+body.touch .pad .mbtn{height:24px;font-size:7px;padding:0 8px}
+body.touch .mid .mbtn{position:absolute;top:calc(10px + env(safe-area-inset-top));right:12px}
+body.touch .keys{display:none}
+body.touch:not(.playing) .pad .mbtn{display:none} /* HEAL e MENU solo mentre esplori */
+body.touch #menu{left:2.2cqw;right:2.2cqw;width:auto}
+@media (orientation:landscape){body.touch .mid .mbtn{top:10px;right:14px}}
+body.touch #dlg,body.touch #menu{bottom:calc(var(--ctl,0px) + 8px)}
+body.touch #log{left:2.2cqw;right:2.2cqw;bottom:calc(var(--ctl,0px) + 18cqw)}
+body.touch #center{bottom:calc(var(--ctl,0px) + 8px)}
+body.touch #oLv{left:calc((var(--lx) + var(--r) + 9) * var(--u));top:calc((var(--cy) - 4) * var(--u));font-size:2.4cqw} /* sul telefono il livello sta accanto alla sfera, sopra c'è la riga dei messaggi */
+body.touch #toast{top:13cqw}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <h1 class="brand">PROOF OF QUEST<span>A dungeon for every Bitcoin block · by Halving Labs</span></h1>
+    <div class="pill" id="pill"><span class="dot" id="dot"></span><span id="pillTxt">CONNECTING…</span></div>
+  </header>
+
+  <div class="main">
+    <section class="cab" aria-label="Game screen">
+      <div class="screen" id="screen">
+        <canvas id="cv" aria-label="Dungeon map"></canvas>
+        <div class="scan"></div>
+        <canvas id="ocv" aria-hidden="true"></canvas>
+        <div class="win" id="hud" hidden></div>
+        <div id="orbs" hidden><span id="oLv"></span><span class="n" id="oHp"></span><span class="l" id="oHpL">HP</span><span class="n" id="oSats"></span><span class="l" id="oSatsL">SATS</span></div>
+        <div class="win" id="ebar" hidden></div>
+        <div class="win" id="hbar" hidden></div>
+        <div class="win" id="log" hidden aria-live="polite"></div>
+        <div class="win" id="center" hidden><div id="cbody"></div><div id="cmenu"></div><div id="cside" class="top5" aria-live="polite"></div></div>
+        <div class="win" id="menu" hidden></div>
+        <div class="win" id="dlg" hidden><span id="dlgText"></span><span id="dlgMore" hidden>▼</span></div>
+        <div class="win" id="toast" hidden></div>
+        <div id="story" hidden aria-live="polite"></div>
+      </div>
+      <div class="pad" aria-label="Controls">
+        <div class="dpad">
+          <button type="button" data-a="up" aria-label="Up">▲</button>
+          <button type="button" data-a="left" aria-label="Left">◀</button>
+          <button type="button" data-a="right" aria-label="Right">▶</button>
+          <button type="button" data-a="down" aria-label="Down">▼</button>
+        </div>
+        <div class="mid">
+          <p class="keys">Arrows / WASD move · Z = A sword · hold X = B shield · C = heal (60 sats) · Esc = menu</p>
+          <button type="button" data-a="menu" class="mbtn" aria-label="Menu: pause and options">MENU</button>
+        </div>
+        <div class="ab">
+          <button type="button" data-a="item" class="mbtn" aria-label="Heal: 60 sats">HEAL 60 SATS</button>
+          <button type="button" data-a="b" aria-label="B: shield, back">B</button>
+          <button type="button" data-a="a" aria-label="A: sword, confirm">A</button>
+        </div>
+      </div>
+    </section>
+
+    <aside class="side">
+      <section class="card" id="blockCard" aria-live="polite"></section>
+      <section class="card" id="mapCard"></section>
+      <section class="card" id="liveCard"></section>
+    </aside>
+  </div>
+</div>
+
+<script src="content.js"></script>
+<script>
+(() => {
+'use strict';
+
+/* ───────── Costanti e dati ───────── */
+const API = 'https://mempool.space/api';
+const VW = 16, TS = 16;
+// VH (righe visibili) cambia col formato: 12 su computer, di più sul telefono in verticale (vedi layout()).
+// CTL = pixel nativi coperti in basso dai controlli trasparenti del telefono, HERO_ROW = riga dello schermo dove sta l'eroe.
+let VH = 12, CTL = 0, HERO_ROW = 6, TOUCH = false, ARENA_Y = 0;
+const SKEY = 'pq-save-v1';
+
+// Contenuti da public/play/content.js (window.PQ_CONTENT): capitoli di Bitcoin History, frasi dei blocchi storici, testi dell'intro,
+// link donazioni. Non fanno parte del motore open source. Senza content.js il gioco funziona lo stesso, senza modalità storica né intro.
+const CONTENT = (typeof window !== 'undefined' && window.PQ_CONTENT) || {};
+// Blocchi storici con dati reali (mempool.space), giocabili anche offline. I testi (legend, scrolls, outro) arrivano da CONTENT.
+const LEGENDS = [
+  {height:0, hash:'000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f', ts:1231006505, prevTs:null, tx:1, size:285, weight:1140, nonce:2083236893, difficulty:1, fees:0, medianFee:0, reward:5000000000, pool:'Unknown'},
+  {height:170, hash:'00000000d1145790a8694403d4063f323d499e655c83426834d4ce2f8dd4a2ee', ts:1231731025, prevTs:1231730523, tx:2, size:490, weight:1960, nonce:1889418792, difficulty:1, fees:0, medianFee:0, reward:5000000000, pool:'Unknown'},
+  {height:57043, hash:'00000000152340ca42227603908689183edc47355204e7aca59383b0aaac1fd8', ts:1274552191, prevTs:1274551384, tx:2, size:23835, weight:95340, nonce:188133155, difficulty:11.84622814970471, fees:99000000, medianFee:4191, reward:5099000000, pool:'Unknown'},
+  {height:97231, hash:'00000000000174238e0c8866119c0f879ee6fa82340a79a53f94c430655d4da5', ts:1292179455, prevTs:1292177812, tx:12, size:2982, weight:11928, nonce:2004956465, difficulty:12251.9997603745, fees:0, medianFee:0, reward:5000000000, pool:'Unknown'},
+  {height:210000, hash:'000000000000048b95347e83192f69cf0366076336c639f9b7228e9ba171342e', ts:1354116278, prevTs:1354114900, tx:457, size:199127, weight:796508, nonce:4069828196, difficulty:3438908.960159138, fees:1356295554, medianFee:387, reward:3856295554, pool:'Braiins Pool'},
+  {height:420000, hash:'000000000000000002cce816c0ab2c5c269cb081896b7dcb34b8422d6b74ffa1', ts:1468082773, prevTs:1468082513, tx:1257, size:999838, weight:3999352, nonce:2193437364, difficulty:213398925331.3239, fees:57569681, medianFee:26, reward:1307569681, pool:'F2Pool'},
+  {height:630000, hash:'000000000000000000024bead8df69990852c202db0e0097c1a12ea637d7e96d', ts:1589225023, prevTs:1589225003, tx:3134, size:1186930, weight:3993250, nonce:2302182970, difficulty:16104807485529.38, fees:90968084, medianFee:90, reward:715968084, pool:'AntPool'},
+  {height:689420, hash:'000000000000000000039bc5192f2df6cbc5b1ddd3a8c597688d788a67d277d7', ts:1625246391, prevTs:1625245936, tx:2165, size:1505781, weight:3993390, nonce:3259715742, difficulty:19932791027262.74, fees:86707375, medianFee:83, reward:711707375, pool:'BTC.com'},
+  {height:840000, hash:'0000000000000000000320283a032748cef8227873ff4872689bf23f1cda83a5', ts:1713571767, prevTs:1713571533, tx:3050, size:2325617, weight:3993281, nonce:3932395645, difficulty:86388558925171.02, fees:3762561499, medianFee:200, reward:4075061499, pool:'ViaBTC'},
+];
+// I blocchi dei primi anni hanno 1-2 transazioni: pochi nemici, quasi niente sats per curarsi. Nel capitolo 1 il guardiano è più debole,
+// così l'eroe di livello 1 può vincere (numeri dalla simulazione del bot, vedi README).
+const HIST_BOSS = {hp: .45, hpD: .12, atk: .6, atkD: .08}; // moltiplicatori al piano 0 e aumento per piano, fino a 1
+
+// Una palette di 4 colori per ogni era di halving (indice 0 = più scuro).
+// Inizio dell'epoca di difficoltà (2016 blocchi) di ogni blocco incorporato: timestamp del primo blocco,
+// difficoltà dell'epoca e di quella precedente. Dati reali da mempool.space.
+const EPOCHS = {
+  0:      {start: 0,      startTs: 1231006505, diff: 1, prevDiff: 1},
+  56448:  {start: 56448,  startTs: 1274278435, diff: 11.84622814970471, prevDiff: 12.84918314782378},
+  96768:  {start: 96768,  startTs: 1291933202, diff: 12251.9997603745, prevDiff: 8078.195257925088},
+  209664: {start: 209664, startTs: 1353928229, diff: 3438908.9601591383, prevDiff: 3368767.1405329388},
+  419328: {start: 419328, startTs: 1467674161, diff: 213398925331.3239, prevDiff: 209453158595.381},
+  628992: {start: 628992, startTs: 1588651521, diff: 16104807485529.38, prevDiff: 15958652328578.42},
+  687456: {start: 687456, startTs: 1623614836, diff: 19932791027262.74, prevDiff: 21047730572451.555},
+  689472: {start: 689472, startTs: 1625294046, diff: 14363025673659.96, prevDiff: 19932791027262.74},
+  838656: {start: 838656, startTs: 1712783853, diff: 86388558925171.02, prevDiff: 83126997340024.61},
+};
+// Blocchi giocabili offline fuori dalla sequenza storica: il retarget più forte della storia (−27,94%).
+const EXTRA_BLOCKS = [
+  {height:689472, hash:'000000000000000000124347f70edac39e58d972c79086d860929baf07e455aa', ts:1625294046, prevTs:1625293501, tx:2309, size:1441807, weight:3993583, nonce:2552446767, difficulty:14363025673659.96, fees:33657646, medianFee:12, reward:658657646, pool:'AntPool'},
+];
+// Modalità storica (run.mode 'legend'): i blocchi del capitolo in CONTENT.history.blocks, nell'ordine in cui si giocano.
+// Ogni blocco: height, legend (frase della scheda), scrolls (pergamene nel piano), outro (frase dopo il guardiano).
+// Un blocco che non è in LEGENDS può portarsi i dati in "block" (stessi campi di LEGENDS) e l'epoca in "epoch" (come EPOCHS).
+const HIST = CONTENT.history && Array.isArray(CONTENT.history.blocks) ? CONTENT.history : null;
+for (const b of [...LEGENDS, ...EXTRA_BLOCKS]) { const t = CONTENT.legends && CONTENT.legends[b.height]; if (t) b.legend = t; }
+const HISTORY = (HIST ? HIST.blocks : []).map(c => {
+  let b = LEGENDS.find(x => x.height === c.height);
+  if (!b && c.block) { b = {...c.block, height: c.height}; LEGENDS.push(b); }
+  if (c.epoch) EPOCHS[c.epoch.start] = c.epoch;
+  return b && Object.assign(b, {ch: 1, legend: c.legend || b.legend, scrolls: c.scrolls || [], outro: c.outro || ''});
+}).filter(Boolean);
+const HISTORY_NAME = HIST && HIST.name || 'HISTORY', CHAPTER = HIST && HIST.chapter || '', CH_SHORT = HIST && HIST.short || 'CHAPTER';
+const HEND = Object.assign({title: 'TO BE CONTINUED…', text: '', again: 'PLAY AGAIN', last: 'the end of the chapter'}, HIST && HIST.end);
+// Difficoltà del gioco legata al difficulty adjustment: tempo medio dei blocchi nell'epoca / 600 s, elevato a HASH_EXP.
+// 10 minuti esatti = 1,00 (valore medio di default). Blocchi più lenti = la difficoltà è troppo alta per l'hashrate = nemici più forti.
+const HASH_EXP = 1.35, HASH_MIN = .7, HASH_MAX = 3, HOSTILE = 1.5;
+const BASE_STR = 1.45; // forza di base di nemici e guardiani in un'epoca normale
+const HASH_ATK = .45; // l'attacco cresce meno degli HP: le epoche ostili logorano, non uccidono all'istante
+const ERAS = [
+  {name:'Era I',   sub:50,     p:['#0f380f','#306230','#8bac0f','#d0f48a']},
+  {name:'Era II',  sub:25,     p:['#1f1006','#6b3a1a','#c9852f','#f6d79a']},
+  {name:'Era III', sub:12.5,   p:['#0a1630','#1d4d80','#4fa3d9','#cdeefc']},
+  {name:'Era IV',  sub:6.25,   p:['#170c26','#4a2770','#a45fc4','#f0d0f7']},
+  {name:'Era V',   sub:3.125,  p:['#140b04','#5c2a07','#f7931a','#ffe7c2']},
+  {name:'Era VI',  sub:1.5625, p:['#1a0606','#6b1414','#e0483b','#ffd6cf']},
+];
+
+// Nemici base: mostro classico + gioco di parole Bitcoin. trait = mossa speciale sulla mappa, line = frase d'ingresso.
+const ROSTER = [
+  {k:'slime',  name:'Mempool Slime',   hp:1.0,  atk:.85, def:.6, xp:1.0, line:'Blub! Your transaction is stuck inside me.'},
+  {k:'bat',    name:'Fee Bat',         hp:.8,   atk:1.1, def:.5, xp:1.0, trait:'fast',   line:'Your fee is too low!'},
+  {k:'ghost',  name:'Dust Ghost',      hp:.75,  atk:.95, def:1.3,xp:1.1, trait:'ghost',  line:'Too small to spend, never too small to haunt.'},
+  {k:'skel',   name:'Orphan Skeleton', hp:1.25, atk:1.05,def:.9, xp:1.3, trait:'revive', line:'My block was orphaned. Yours is next!'},
+  {k:'goblin', name:'HODLer Goblin',   hp:1.1,  atk:1.0, def:1.0,xp:1.2, trait:'rich',   gold:2.5, line:'Mine! I never sell!'},
+  {k:'rat',    name:'Shitcoin Rat',    hp:.7,   atk:1.0, def:.6, xp:.9,  trait:'fast',   line:'100x guaranteed, trust me!'},
+];
+
+// Bestiario dei guardiani: nome, epiteto, mossa speciale. La chiave è il nome del pool come lo restituisce mempool.space.
+const BOSSES = {
+  'Foundry USA':   ['Foundry Golem', 'The American colossus of hashrate.', 'INDUSTRIAL SMELT'],
+  'AntPool':       ['Ant Queen', 'She commands an endless colony of ASICs.', 'ASIC SWARM'],
+  'F2Pool':        ['F2 Leviathan', 'One of the oldest pools still alive, born in 2013.', 'DEEP TIDE'],
+  'ViaBTC':        ['Hydra of Via', 'Every head mines a different chain.', 'MULTI BITE'],
+  'MARA Pool':     ['MARA Raider', 'The miner listed on the stock market.', 'LISTED RAID'],
+  'Binance Pool':  ['Yellow Dragon', 'Exchange wings, liquidity breath.', 'LIQUIDITY BREATH'],
+  'SpiderPool':    ['Hash Spider', 'It weaves shares in every corner of the network.', 'SHARE WEB'],
+  'Braiins Pool':  ['Mind of Slush', 'Heir of Slush Pool, the first mining pool in history (2010).', 'MEMORY OF 2010'],
+  'Luxor':         ['Luxor Sovereign', 'Rules over firmware and mining software.', 'FIRMWARE FLARE'],
+  'SECPOOL':       ['SEC Sentinel', 'Guards the stairs and never sleeps.', 'NIGHT WATCH'],
+  'OCEAN':         ['Kraken of Ocean', 'Pays miners straight from the coinbase.', 'NON-CUSTODIAL WAVE'],
+  'SBI Crypto':    ['SBI Samurai', 'Japanese discipline, silicon blade.', 'KATANA CUT'],
+  'Poolin':        ['Poolin Titan', 'A giant that fell and rose again.', 'TITAN STEP'],
+  'BTC.com':       ['BTC.com Wraith', 'A domain that crossed every era.', 'DOMAIN ECHO'],
+  'ULTIMUSPOOL':   ['Ultimate Guardian', 'Last in the line of guardians.', 'FINAL SEAL'],
+  'Mining Squared':['Squared Cube', 'Hashrate raised to the second power.', 'POWER UP'],
+  'WhitePool':     ['White Wolf', 'Hunts in packs through the snow.', 'WHITE HOWL'],
+  'GHash.IO':      ['51% Tyrant', 'In 2014 it came close to half of the network hashrate.', 'ABSOLUTE MAJORITY'],
+  'BTC Guild':     ['Fallen Guild', 'Ruled in 2013, closed in 2015.', 'GUILD OATH'],
+  'BitFury':       ['Silicon Fury', 'Forged its own chips.', 'SILICON FURY'],
+  'BTCC':          ['BTCC Dragon', 'Born from one of the first Chinese exchanges.', 'EASTERN FLAME'],
+  'BTC.TOP':       ['BTC.TOP Summit', 'Looks down on everyone.', 'SUMMIT FALL'],
+};
+// Pool di solo mining: chi trova il blocco incassa tutto, da solo. Nel gioco evocano il boss leggendario.
+const SOLO_POOLS = new Set(['Solo CK', 'Public Pool', 'Braiins Solo', 'Bitsolo', 'FutureBit Apollo Solo', 'SoloPool.com']);
+const isSolo = pool => SOLO_POOLS.has(pool) || (/solo/i.test(pool) && pool !== 'CKPool');
+const LEG_HP = 1.64, LEG_ATK = .985; // moltiplicatori del Minatore Solitario rispetto al boss normale del piano
+const LEGEND_PAL = ['#0b0a1f', '#3b2f7a', '#f2c230', '#fff8dc']; // notte e oro
+function bossFor(pool, era, live) {
+  if (live && isSolo(pool)) return {name: 'Lone Miner', epi: 'Found a block alone, against the whole network.', move: 'LUCKY NONCE', legendary: true, spr: 'lonely'};
+  const b = BOSSES[pool] || (pool === 'Unknown'
+    ? (era === 0 ? ["Satoshi's CPU", 'In the beginning a home computer processor was enough.', 'CLOCK CYCLE'] : ['Nameless Miner', 'No coinbase tag, no face.', 'ANONYMOUS STRIKE'])
+    : [pool + ' Guardian', 'A pool beyond the chronicles.', 'HASH STRIKE']);
+  return {name: b[0], epi: b[1], move: b[2], legendary: false, spr: GUARD_SPRITE[pool] || 'knight'};
+}
+// Probabilità che un Bitaxe da 1,2 TH/s trovi un blocco a quella difficoltà: hashrate di rete ≈ difficoltà × 2^32 / 600.
+const BITAXE_HS = 1.2e12;
+function soloOdds(difficulty) {
+  const oneIn = (difficulty * 4294967296 / 600) / BITAXE_HS;
+  return {oneIn, years: oneIn * 600 / 31557600};
+}
+const bigNum = n => n >= 1e9 ? (n / 1e9).toLocaleString('en-US', {maximumFractionDigits: 1}) + ' billion' : n >= 1e6 ? (n / 1e6).toLocaleString('en-US', {maximumFractionDigits: 0}) + ' million' : Math.round(n).toLocaleString('en-US');
+
+const SPR = {
+ hero:[".....000000.....","....02222220....","...0222222220...","...0233333320...","...0230330320...","...0233333320...","....03311330....",".....033330.....","...0011111100...","..011122221110..","..031122221130..","..033122221330..","...0012222100...","....01100110....","....01100110....","...0000..0000..."],
+ chest:["................","................","................","...0000000000...","..022222222220..","..021111111120..","..000000000000..","..022220022220..","..022203302220..","..022220022220..","..022222222220..","..022222222220..","..000000000000..","................","................","................"],
+ chestOpen:["................","................","................","...0000000000...","..033333333330..","..030303030330..","..000000000000..","..022220022220..","..022200002220..","..022220022220..","..022222222220..","..022222222220..","..000000000000..","................","................","................"],
+};
+
+/* ───────── Sprite dei guardiani (32×32, generate da forme) ─────────
+   Ogni sprite è una lista di forme disegnate sulla metà sinistra (x 0-15) e poi specchiate,
+   tranne quelli con mirror:false. Colori: 1 scuro, 2 medio, 3 chiaro, -1 cancella; il contorno (0) e le ombre sono automatici.
+   Forme: e = ellisse [cx, cy, rx, ry], r = rettangolo [x0, y0, x1, y1], l = linea [x0, y0, x1, y1],
+          p = poligono [[x, y], ...], d = pixel singoli [[x, y], ...]. Opzione s:0 = niente ombre. */
+const GUARD_DEFS = {
+  // Golem di Foundry: colosso di ferro con la fornace accesa nel petto
+  golem: {shapes: [
+    {r: [9, 24, 14, 30], c: 1}, {r: [9, 30, 15, 31], c: 1},
+    {r: [5, 12, 15, 24], c: 2},
+    {e: [6, 12, 4, 3], c: 2},
+    {r: [1, 13, 5, 23], c: 1}, {e: [3, 25, 3, 3], c: 2},
+    {r: [11, 15, 15, 20], c: 3, s: 0}, {r: [11, 16, 15, 16], c: 1, s: 0}, {r: [11, 18, 15, 18], c: 1, s: 0},
+    {r: [6, 5, 7, 9], c: 1}, {d: [[6, 3], [7, 2]], c: 1, s: 0},
+    {r: [11, 5, 15, 11], c: 2}, {r: [12, 7, 15, 7], c: 1, s: 0}, {r: [12, 8, 15, 8], c: 3, s: 0},
+    {d: [[7, 15], [7, 21], [9, 23]], c: 3, s: 0},
+  ]},
+  // Regina Formica (AntPool): regina con corona, mandibole e sei zampe
+  ant: {shapes: [
+    {l: [12, 15, 3, 11], c: 1}, {l: [3, 11, 1, 17], c: 1},
+    {l: [12, 17, 4, 20], c: 1}, {l: [4, 20, 2, 26], c: 1},
+    {l: [12, 19, 7, 24], c: 1}, {l: [7, 24, 5, 30], c: 1},
+    {e: [16, 25, 9, 6], c: 2}, {r: [8, 23, 15, 23], c: 1, s: 0}, {r: [9, 26, 15, 26], c: 1, s: 0},
+    {e: [16, 16, 5, 4], c: 1},
+    {l: [13, 4, 8, 0], c: 1},
+    {e: [16, 9, 6, 5], c: 2},
+    {e: [12, 8, 2, 2], c: 1, s: 0}, {d: [[12, 7]], c: 3, s: 0},
+    {l: [13, 13, 11, 15], c: 1},
+    {r: [12, 2, 15, 3], c: 3, s: 0}, {d: [[12, 1], [14, 0], [15, 1]], c: 3, s: 0},
+  ]},
+  // Idra di Via (ViaBTC): tre teste, ognuna su un collo diverso
+  hydra: {shapes: [
+    {e: [16, 27, 10, 5], c: 1},
+    {e: [12, 22, 2, 2], c: 2}, {e: [10, 19, 2, 2], c: 2}, {e: [8, 16, 2, 2], c: 2}, {e: [6, 13, 2, 2], c: 2},
+    {e: [4, 10, 4, 3], c: 2}, {d: [[3, 9]], c: 3, s: 0}, {d: [[1, 12], [3, 12]], c: 3, s: 0},
+    {r: [14, 12, 15, 25], c: 2}, {r: [15, 15, 15, 23], c: 3, s: 0},
+    {e: [16, 9, 4, 4], c: 2}, {d: [[14, 8]], c: 3, s: 0}, {d: [[14, 12], [15, 12]], c: 3, s: 0},
+    {d: [[13, 5], [12, 4]], c: 1, s: 0},
+  ]},
+  // Leviatano F2 (F2Pool): serpente marino che emerge dalle onde, con la testa rivolta a sinistra (asimmetrico)
+  leviathan: {mirror: false, shapes: [
+    {e: [8, 29, 6, 7], c: 2}, {e: [8, 31, 3, 4], c: -1},
+    {p: [[17, 31], [24, 31], [26, 14], [19, 12]], c: 2}, {l: [19, 16, 18, 29], c: 3, s: 0},
+    {p: [[25, 13], [31, 9], [27, 21]], c: 1}, {p: [[26, 21], [31, 19], [25, 26]], c: 1},
+    {e: [20, 9, 7, 5], c: 2},
+    {p: [[12, 11], [20, 11], [21, 15], [14, 14]], c: 1}, {d: [[14, 11], [16, 11], [18, 11]], c: 3, s: 0},
+    {p: [[22, 5], [29, 0], [26, 7]], c: 1}, {p: [[25, 7], [31, 4], [27, 10]], c: 1},
+    {d: [[17, 7]], c: 3, s: 0}, {d: [[18, 7]], c: 0, s: 0},
+    {r: [0, 29, 31, 31], c: 1, s: 0}, {d: [[2, 29], [3, 29], [12, 29], [13, 29], [26, 29], [27, 29]], c: 3, s: 0},
+  ]},
+  // Ragno dell'Hash (SpiderPool): otto zampe e un # sull'addome
+  spider: {shapes: [
+    {l: [12, 11, 4, 5], c: 2}, {l: [4, 5, 1, 12], c: 2},
+    {l: [12, 13, 3, 11], c: 2}, {l: [3, 11, 0, 19], c: 2},
+    {l: [12, 15, 4, 17], c: 2}, {l: [4, 17, 1, 25], c: 2},
+    {l: [13, 18, 6, 24], c: 2}, {l: [6, 24, 4, 30], c: 2},
+    {e: [16, 21, 8, 7], c: 1},
+    {r: [12, 18, 15, 18], c: 3, s: 0}, {r: [12, 22, 15, 22], c: 3, s: 0}, {r: [14, 16, 14, 24], c: 3, s: 0},
+    {e: [16, 11, 5, 4], c: 2},
+    {d: [[12, 10], [14, 10], [13, 12], [15, 12]], c: 3, s: 0},
+    {d: [[14, 15], [15, 16]], c: 3, s: 0},
+  ]},
+  // Predone MARA (MARA Pool): predone con elmo cornuto e asce incrociate
+  raider: {shapes: [
+    {l: [3, 5, 14, 28], c: 1}, {p: [[0, 2], [5, 0], [6, 6], [1, 8]], c: 3},
+    {r: [11, 25, 14, 31], c: 1},
+    {r: [9, 15, 15, 25], c: 2}, {r: [9, 22, 15, 22], c: 1, s: 0}, {d: [[15, 22]], c: 3, s: 0},
+    {r: [5, 16, 8, 24], c: 2}, {e: [6, 25, 2, 2], c: 3},
+    {e: [9, 15, 3, 2], c: 2},
+    {e: [16, 10, 4, 4], c: 3},
+    {r: [12, 4, 15, 8], c: 1}, {l: [12, 6, 7, 2], c: 3}, {l: [7, 2, 6, 0], c: 3},
+    {d: [[14, 10]], c: 0, s: 0}, {r: [13, 12, 15, 15], c: 1, s: 0},
+  ]},
+  // Guardiano generico (pool fuori dal bestiario): cavaliere con scudo a forma di blocco
+  knight: {shapes: [
+    {p: [[6, 12], [15, 10], [15, 30], [3, 30]], c: 1},
+    {r: [11, 24, 14, 31], c: 2},
+    {r: [9, 12, 15, 24], c: 2},
+    {e: [8, 12, 3, 2], c: 3},
+    {e: [16, 8, 5, 5], c: 2}, {r: [12, 8, 15, 8], c: 0, s: 0}, {r: [15, 0, 15, 3], c: 3, s: 0},
+    {p: [[8, 14], [15, 14], [15, 29], [10, 25]], c: 3},
+    {r: [12, 17, 15, 21], c: 1, s: 0}, {r: [12, 17, 15, 17], c: 2, s: 0},
+  ]},
+  // Minatore Solitario: elmetto con lampada frontale, piccone alzato e Bitaxe alla cintura (asimmetrico)
+  lonely: {mirror: false, shapes: [
+    {r: [22, 1, 23, 13], c: 2, s: 0},
+    {r: [16, 1, 29, 2], c: 3}, {d: [[15, 3], [14, 4], [30, 3], [31, 4]], c: 3, s: 0},
+    {r: [12, 25, 14, 30], c: 1}, {r: [17, 25, 19, 30], c: 1}, {r: [11, 30, 14, 31], c: 1}, {r: [17, 30, 20, 31], c: 1},
+    {r: [11, 15, 20, 25], c: 2}, {r: [13, 15, 13, 24], c: 1, s: 0}, {r: [18, 15, 18, 24], c: 1, s: 0},
+    {r: [11, 23, 20, 23], c: 1, s: 0}, {r: [14, 20, 17, 22], c: 3, s: 0}, {d: [[15, 21], [16, 21]], c: 0, s: 0},
+    {r: [8, 16, 10, 24], c: 2}, {e: [9, 25, 2, 2], c: 3},
+    {r: [21, 9, 23, 17], c: 2}, {e: [22, 8, 2, 2], c: 3},
+    {e: [16, 10, 4, 4], c: 3}, {r: [13, 12, 19, 14], c: 1, s: 0}, {d: [[14, 10], [18, 10]], c: 0, s: 0},
+    {e: [16, 6, 6, 3], c: 2}, {r: [9, 7, 23, 7], c: 1, s: 0},
+    {e: [16, 5, 2, 1.5], c: 3, s: 0},
+  ]},
+};
+// Pool → sprite del guardiano. Chi non è in elenco usa il cavaliere generico.
+const GUARD_SPRITE = {'Foundry USA': 'golem', 'AntPool': 'ant', 'ViaBTC': 'hydra', 'F2Pool': 'leviathan', 'SpiderPool': 'spider', 'MARA Pool': 'raider'};
+
+// Costruisce una sprite quadrata (def.size, di solito 32 o 16) dalle forme: prima quelle da specchiare,
+// poi lo specchio, poi le forme con m:0 (asimmetriche), infine il contorno automatico.
+function buildSprite(def) {
+  const W = def.size || 32, H = W, grid = Array.from({length: H}, () => Array(W).fill(-1));
+  const paint = sh => {
+    const mask = Array.from({length: H}, () => Array(W).fill(false));
+    const set = (x, y) => { x = Math.round(x); y = Math.round(y); if (x >= 0 && y >= 0 && x < W && y < H) mask[y][x] = true; };
+    if (sh.e) { const [cx, cy, rx, ry] = sh.e; for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const dx = (x + .5 - cx) / rx, dy = (y + .5 - cy) / ry; if (dx * dx + dy * dy <= 1) mask[y][x] = true; } }
+    if (sh.r) { const [x0, y0, x1, y1] = sh.r; for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) set(x, y); }
+    if (sh.d) for (const [x, y] of sh.d) set(x, y);
+    if (sh.l) { const [x0, y0, x1, y1] = sh.l, n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0)) || 1; for (let i = 0; i <= n; i++) set(x0 + (x1 - x0) * i / n, y0 + (y1 - y0) * i / n); }
+    if (sh.p) { const pts = sh.p; for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { let inside = false; const px = x + .5, py = y + .5; for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) { const [xi, yi] = pts[i], [xj, yj] = pts[j]; if ((yi > py) !== (yj > py) && px < (xj - xi) * (py - yi) / (yj - yi) + xi) inside = !inside; } if (inside) mask[y][x] = true; } }
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      if (!mask[y][x]) continue;
+      let c = sh.c;
+      if (c === -1) { grid[y][x] = -1; continue; }
+      if (sh.s !== 0 && c > 0) {
+        if (y + 1 >= H || !mask[y + 1][x]) c = Math.max(1, c - 1);
+        else if (y - 1 < 0 || !mask[y - 1][x]) c = Math.min(3, c + 1);
+      }
+      grid[y][x] = c;
+    }
+  };
+  def.shapes.filter(sh => sh.m !== 0).forEach(paint);
+  if (def.mirror !== false) for (let y = 0; y < H; y++) for (let x = 0; x < W / 2; x++) grid[y][W - 1 - x] = grid[y][x];
+  def.shapes.filter(sh => sh.m === 0).forEach(paint);
+  const out = grid.map(r => r.slice());
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    if (grid[y][x] !== -1) continue;
+    if ([[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => { const v = grid[y + dy] && grid[y + dy][x + dx]; return v !== undefined && v !== -1 && v !== 0; })) out[y][x] = 0;
+  }
+  return out.map(r => r.map(v => v === -1 ? '.' : String(v)).join(''));
+}
+// Secondo fotogramma ("respiro"): la parte alta scende di un pixel.
+function breathe(rows) {
+  const H = rows.length, cut = Math.floor(H / 2), blank = '.'.repeat(rows[0].length);
+  return [blank, ...rows.slice(0, cut), ...rows.slice(cut + 1)];
+}
+for (const [k, def] of Object.entries(GUARD_DEFS)) {
+  const big = buildSprite(def);
+  SPR['g_' + k] = big; SPR['g_' + k + '_b'] = breathe(big);
+}
+/* ───────── Nemici base (16×16) ─────────
+   Mostri classici dei giochi di ruolo con un gioco di parole Bitcoin. Stesse regole di disegno dei guardiani, griglia 16×16. */
+const ENEMY_DEFS = {
+  // Mempool Slime: una goccia piena di piccole transazioni in attesa
+  slime: {size: 16, shapes: [
+    {e: [8, 12, 7.5, 3.8], c: 2}, {e: [8, 8.5, 5, 4.5], c: 2}, {d: [[7, 3]], c: 2},
+    {r: [5, 8, 5, 10], c: 0, s: 0}, {d: [[7, 12]], c: 1, s: 0},
+    {d: [[4, 6], [5, 5]], c: 3, s: 0}, {r: [2, 12, 3, 13], c: 1, s: 0},
+  ]},
+  // Fee Bat: pipistrello con le zanne e una moneta stretta tra i denti
+  bat: {size: 16, shapes: [
+    {p: [[7, 7], [0, 3], [1, 10], [3, 8], [4, 11], [6, 9]], c: 1},
+    {e: [8, 8.5, 3, 4], c: 2}, {d: [[6, 4], [6, 5]], c: 2},
+    {d: [[6, 7]], c: 3, s: 0}, {d: [[7, 11]], c: 3, s: 0},
+  ]},
+  bat_b: {size: 16, shapes: [
+    {p: [[7, 8], [0, 9], [1, 14], [3, 12], [4, 14], [6, 11]], c: 1},
+    {e: [8, 8.5, 3, 4], c: 2}, {d: [[6, 4], [6, 5]], c: 2},
+    {d: [[6, 7]], c: 3, s: 0}, {d: [[7, 11]], c: 3, s: 0},
+  ]},
+  // Dust Ghost: lenzuolo sfilacciato fatto di polvere, granelli tutt'intorno
+  ghost: {size: 16, shapes: [
+    {e: [8, 7, 6, 6], c: 3}, {r: [2, 7, 7, 13], c: 3},
+    {d: [[3, 13], [6, 13], [2, 12]], c: -1},
+    {r: [5, 6, 6, 8], c: 0, s: 0}, {d: [[7, 10]], c: 1, s: 0},
+    {d: [[0, 4], [1, 9], [0, 15]], c: 2, s: 0},
+  ]},
+  // Orphan Skeleton: scheletro che si porta dietro il suo blocco orfano, crepato
+  skel: {size: 16, shapes: [
+    {e: [8, 4, 4, 3.5], c: 3}, {r: [5, 3, 6, 4], c: 0, s: 0}, {r: [6, 7, 7, 7], c: 3, s: 0}, {d: [[7, 6]], c: 1, s: 0},
+    {r: [7, 8, 7, 12], c: 3, s: 0}, {r: [5, 9, 7, 9], c: 3, s: 0}, {r: [5, 11, 7, 11], c: 3, s: 0},
+    {l: [4, 9, 2, 12], c: 3, s: 0}, {r: [5, 13, 5, 15], c: 3, s: 0},
+    {r: [11, 9, 14, 12], c: 2, m: 0}, {d: [[12, 10], [13, 11]], c: 0, s: 0, m: 0},
+  ]},
+  // HODLer Goblin: orecchie a punta, ghigno, abbraccia un sacco di sats che non mollerà mai
+  goblin: {size: 16, shapes: [
+    {p: [[5, 6], [1, 1], [4, 8]], c: 2}, {e: [8, 6.5, 4, 3.5], c: 2},
+    {d: [[5, 5], [6, 5]], c: 1, s: 0}, {d: [[6, 6]], c: 3, s: 0},
+    {r: [5, 8, 7, 9], c: 0, s: 0}, {d: [[5, 8], [7, 8]], c: 3, s: 0},
+    {r: [5, 10, 7, 14], c: 1}, {r: [5, 15, 6, 15], c: 1},
+    {e: [11.5, 12, 4, 3.5], c: 3, m: 0}, {d: [[11, 8], [12, 8]], c: 2, s: 0, m: 0}, {r: [11, 11, 11, 13], c: 1, s: 0, m: 0}, {d: [[12, 11], [12, 12], [12, 13]], c: 1, s: 0, m: 0},
+  ]},
+  // Shitcoin Rat: ratto di profilo, muso a punta, coda lunga, una moneta sospetta tra le zampe
+  rat: {size: 16, mirror: false, shapes: [
+    {l: [13, 11, 15, 7], c: 1, s: 0}, {l: [15, 7, 14, 4], c: 1, s: 0},
+    {e: [9, 11, 5, 3.3], c: 2},
+    {p: [[6, 8], [0, 11], [6, 13.5]], c: 2},
+    {e: [6, 7.5, 1.6, 1.6], c: 3},
+    {d: [[3, 10]], c: 0, s: 0}, {d: [[0, 11]], c: 0, s: 0},
+    {d: [[6, 14], [11, 14], [12, 14]], c: 1, s: 0},
+    {e: [3.5, 14, 1.6, 1.6], c: 3}, {d: [[3, 14]], c: 1, s: 0},
+  ]},
+};
+for (const [k, def] of Object.entries(ENEMY_DEFS)) {
+  if (k.endsWith('_b')) continue;
+  SPR[k] = buildSprite(def);
+  SPR[k + '_b'] = ENEMY_DEFS[k + '_b'] ? buildSprite(ENEMY_DEFS[k + '_b']) : breathe(SPR[k]);
+}
+// Eroe visto di spalle, per l'arena dei boss
+// Eroe sulla mappa visto di spalle (va verso l'alto) e di profilo (verso destra; a sinistra si specchia). Di fronte è SPR.hero.
+// Teschio con ossa incrociate: l'Orphan Skeleton a terra, mentre si ricompone
+SPR.bones = ["................", "................", "................", "..00........00..", ".0330.0000.0330.", ".03300333300330.", "..003333333300..", "....03333330....", "....03033030....", "....03033030....", "....03333330....", "....03302330....", "....03030330....", "..0030.0.00300..", ".0330......0330.", ".0330......0330."];
+SPR.heroUp = [".....000000.....","....02222220....","...0222222220...","...0222222220...","...0222222220...","...3222222223...","....01222210....",".....011110.....","...0011111100...","..011111111110..","..031111111130..","..033111111330..","...0012222100...","....01100110....","....01100110....","...0000..0000..."];
+// di spalle con lo scudo alzato: le braccia sono tese in avanti, le mani non si vedono
+SPR.heroUpGuard = [".....000000.....", "....02222220....", "...0222222220...", "...0222222220...", "...0222222220...", "...3222222223...", "....01222210....", ".....011110.....", "...0011111100...", "..011111111110..", "..011111111110..", "..001111111100..", "...0012222100...", "....01100110....", "....01100110....", "...0000..0000..."];
+SPR.heroSide = ["......00000.....",".....0222220....","....022222220...","....022223330...","....022230330...","....0222333330..",".....02233330...","......033330....",".....00111100...","....011112210...","....011112230...","....001122330...",".....0012210....",".....0110110....","....0110.0110...","....000..000...."];
+// Spada "Private Key" (impugnatura, elsa, lama con punta) nelle 4 direzioni e scudo "Cold Storage" con il simbolo di bitcoin: piccolo in mano, grande quando è alzato
+SPR.swR = ["...0..........", "0002000000000.", "01123333333330", "0002022222220.", "...0.........."]; SPR.swL = ["..........0...", ".0000000002000", "03333333332110", ".0222222202000", "..........0..."]; SPR.swD = [".000.", ".010.", ".010.", "02220", ".030.", ".230.", ".230.", ".230.", ".230.", ".230.", ".230.", ".230.", ".030.", "..0.."]; SPR.swU = ["..0..", ".030.", ".230.", ".230.", ".230.", ".230.", ".230.", ".230.", ".230.", ".030.", "02220", ".010.", ".010.", ".000."];
+SPR.shS = ["000000", "023320", "023230", "023320", "023230", "023320", ".0220.", "..00.."]; SPR.shBig = ["000000000000", "022223232220", "022233332220", "022232223220", "022233332220", "022232223220", "022233332220", ".0222323220.", "..02222220..", "...022220...", "....0000...."]; SPR.shSide = ["0000", "0320", "0320", "0320", "0330", "0320", "0320", "0320", ".00."];
+SPR.heroBack = buildSprite({size: 32, mirror: false, shapes: [
+    {p: [[6, 31], [26, 31], [23, 16], [9, 16]], c: 2}, {r: [15, 18, 16, 31], c: 1, s: 0},
+    {e: [16, 17, 9, 3.5], c: 1}, {r: [5, 18, 8, 27], c: 1}, {e: [6.5, 28, 2, 2], c: 3},
+    {r: [24, 14, 27, 21], c: 1}, {e: [25.5, 13, 2, 2], c: 3},
+    {r: [25, 0, 26, 11], c: 3, s: 0}, {r: [22, 11, 29, 12], c: 2},
+    {e: [16, 9, 6, 6.5], c: 2}, {d: [[12, 5], [14, 4], [17, 4], [19, 5], [13, 8], [19, 9]], c: 3, s: 0}, {d: [[10, 10], [22, 10]], c: 3},
+  ]});
+// Icone 5×5 sopra la testa dei nemici (1 = pixel acceso): cosa sanno fare
+const ICONS = {
+  fast:   ['1.1..', '.1.1.', '..1.1', '.1.1.', '1.1..'],
+  ghost:  ['.111.', '1.1.1', '11111', '11111', '1.1.1'],
+  revive: ['..1..', '..1..', '11111', '..1..', '..1..'],
+  rich:   ['.111.', '1.1..', '.111.', '..1.1', '.111.'],
+};
+// Icone 9×9 della mossa annunciata nell'arena dei boss
+const BIG_ICONS = {
+  special: ['....1....', '...111...', '1..111..1', '.1.111.1.', '..11111..', '.1.111.1.', '1..111..1', '...111...', '....1....'],
+  nonce:   ['.1...1...', '.1...1...', '111111111', '.1...1...', '.1...1...', '.1...1...', '111111111', '.1...1...', '.1...1...'],
+  reboot:  ['...111...', '.11...11.', '1.......1', '1...1...1', '1..111..1', '1...1...1', '1.......1', '.11...11.', '...111...'],
+};
+// Cifre 3×5 per i danni che volano via
+const DIGITS = {'0': '111101101101111', '1': '010110010010111', '2': '111001111100111', '3': '111001111001111', '4': '101101111001001', '5': '111100111001111', '6': '111100111101111', '7': '111001010010010', '8': '111101111101111', '9': '111101111001111', '+': '000010111010000', '-': '000000111000000'};
+
+/* ───────── Utility ───────── */
+const $ = id => document.getElementById(id);
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const fmt = n => Number(n).toLocaleString('en-US');
+const btc = sats => (sats / 1e8).toLocaleString('en-US', {maximumFractionDigits: 3}) + ' BTC';
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const dur = s => s == null ? '—' : s < 60 ? `${s}s` : s < 3600 ? `${Math.floor(s/60)}m ${String(s%60).padStart(2,'0')}s` : s < 86400 ? `${Math.floor(s/3600)}h ${Math.floor(s%3600/60)}m` : `${Math.floor(s/86400)}d ${Math.floor(s%86400/3600)}h`;
+const wu = w => w >= 1e5 ? (w / 1e6).toLocaleString('en-US', {maximumFractionDigits: 2}) + ' MWU' : fmt(w) + ' WU';
+const pct = x => Math.abs(x) < .0005 ? '0%' : (x > 0 ? '+' : '−') + Math.abs(x * 100).toLocaleString('en-US', {maximumFractionDigits: 1}) + '%';
+const hashLabel = m => '×' + m.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+const sci = n => n < 1e4 ? fmt(Math.round(n)) : n.toExponential(2).replace('e+', '×10^');
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+function sfc32(a, b, c, d) {
+  return () => { a|=0; b|=0; c|=0; d|=0; const t = (a + b | 0) + d | 0; d = d + 1 | 0; a = b ^ b >>> 9; b = c + (c << 3) | 0; c = (c << 21 | c >>> 11); c = c + t | 0; return (t >>> 0) / 4294967296; };
+}
+// Il seme del livello sono gli ultimi 32 caratteri esadecimali dell'hash del blocco.
+function rngFromHash(hex) {
+  const tail = hex.slice(-32);
+  const r = sfc32(...[0, 8, 16, 24].map(i => parseInt(tail.slice(i, i + 8), 16)));
+  for (let i = 0; i < 12; i++) r();
+  const R = () => r();
+  R.int = n => Math.floor(r() * n);
+  R.pick = a => a[Math.floor(r() * a.length)];
+  return R;
+}
+
+/* ───────── Audio chiptune ───────── */
+let AC = null, MASTER = null, soundOn = true;
+// Su iPhone l'audio del web resta muto con l'interruttore silenzioso: "playback" lo fa suonare come un video (Safari 17+)
+try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) {}
+function audioCtx() {
+  if (!AC) {
+    AC = new (window.AudioContext || window.webkitAudioContext)();
+    MASTER = AC.createGain(); MASTER.gain.value = 2.2; MASTER.connect(AC.destination); // volume generale
+  }
+  return AC;
+}
+function beep(f, d, type = 'square', vol = .045, slide = 0, delay = 0) {
+  if (!soundOn) return;
+  try {
+    audioCtx(); if (AC.state !== 'running') AC.resume();
+    const t0 = AC.currentTime + delay, o = AC.createOscillator(), g = AC.createGain();
+    o.type = type; o.frequency.setValueAtTime(f, t0);
+    if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(30, f + slide), t0 + d);
+    g.gain.setValueAtTime(vol, t0); g.gain.exponentialRampToValueAtTime(.0001, t0 + d);
+    o.connect(g).connect(MASTER); o.start(t0); o.stop(t0 + d + .02);
+  } catch (e) {}
+}
+const seq = (notes, step = .09, d = .1) => notes.forEach((f, i) => beep(f, d, 'square', .04, 0, i * step));
+const SFX = {
+  sel: () => beep(988, .04), bump: () => beep(90, .05, 'square', .03), swing: () => beep(700, .07, 'square', .025, -450),
+  crumble: () => { seq([330, 262, 196, 147], .06, .08); beep(80, .25, 'square', .03, 0, .24); },
+  parry: () => { beep(1400, .05, 'square', .04); beep(900, .08, 'square', .035, 0, .04); }, hit: () => beep(260, .12, 'square', .05, -180),
+  hurt: () => beep(140, .22, 'sawtooth', .05, -80), zap: () => beep(1500, .3, 'sawtooth', .045, -1300),
+  heal: () => seq([523, 659, 784], .07), chest: () => seq([660, 880, 1320], .06), win: () => seq([523, 659, 784, 1047], .08, .12),
+  level: () => seq([392, 523, 659, 784, 1047, 784, 1047], .08, .12), encounter: () => seq([220, 330, 220, 440], .05, .06),
+  legend: () => { seq([196, 247, 294, 392, 494, 587, 784], .11, .16); beep(98, 1.2, 'triangle', .06, 0, .8); },
+  stairs: () => seq([784, 659, 523, 392], .07), block: () => seq([392, 523, 659, 784, 659, 784, 1047], .09, .11), die: () => seq([392, 330, 262, 196, 131], .14, .2),
+};
+
+/* ───────── Stato ───────── */
+const cv = $('cv'); cv.width = VW * TS; cv.height = VH * TS;
+const H = () => VH * TS;
+const ctx = cv.getContext('2d'); ctx.imageSmoothingEnabled = false;
+let state = 'boot', P = null, run = null, floor = null, battle = null;
+let online = false, tip = null, tipBlock = null, liveFees = null, mempool = null, liveAdj = null;
+let pal = ERAS[4].p, menu = null, dlg = null, shakeUntil = 0, lastMove = 0, flashUntil = 0;
+const sprCache = new Map(), cache = new Map();
+[...LEGENDS, ...EXTRA_BLOCKS].forEach(b => { b.epoch = EPOCHS[b.height - b.height % 2016] || null; cache.set(b.height, b); });
+const epochCache = new Map(Object.values(EPOCHS).map(e => [e.start, e]));
+
+/* ───────── API mempool.space ───────── */
+async function getJSON(path, ms = 8000) {
+  const c = new AbortController(), t = setTimeout(() => c.abort(), ms);
+  try { const r = await fetch(API + path, {signal: c.signal, cache: 'no-store'}); if (!r.ok) throw new Error('HTTP ' + r.status); return await r.json(); }
+  finally { clearTimeout(t); }
+}
+function norm(b, prevTs) {
+  const x = b.extras || {};
+  return {height: b.height, hash: b.id, ts: b.timestamp, prevTs: prevTs ?? null, tx: b.tx_count, size: b.size, weight: b.weight, nonce: b.nonce,
+    difficulty: b.difficulty, fees: x.totalFees ?? 0, medianFee: x.medianFee ?? 0, reward: x.reward ?? 0, pool: (x.pool && x.pool.name) || 'Unknown'};
+}
+async function epochFor(h) {
+  const start = h - h % 2016;
+  if (epochCache.has(start)) return epochCache.get(start);
+  const arr = await getJSON('/v1/blocks/' + start);
+  const a = arr.find(x => x.height === start), p = arr.find(x => x.height === start - 1);
+  if (!a) return null;
+  const e = {start, startTs: a.timestamp, diff: a.difficulty, prevDiff: p ? p.difficulty : null};
+  epochCache.set(start, e); return e;
+}
+async function loadBlock(h) {
+  let n = cache.get(h);
+  if (!n) {
+    const arr = await getJSON('/v1/blocks/' + h);
+    const b = arr.find(x => x.height === h), prev = arr.find(x => x.height === h - 1);
+    if (!b) throw new Error('Block #' + h + ' does not exist yet.');
+    n = norm(b, prev ? prev.timestamp : null); cache.set(h, n);
+  }
+  if (n.epoch === undefined) { try { n.epoch = await epochFor(h); } catch (e) { n.epoch = null; } }
+  return n;
+}
+async function pollTip() {
+  try {
+    const arr = await getJSON('/v1/blocks', 6000);
+    arr.forEach((b, i) => { if (arr[i + 1] && !cache.has(b.height)) cache.set(b.height, norm(b, arr[i + 1].timestamp)); });
+    const top = cache.get(arr[0].height) || norm(arr[0], null);
+    const fresh = tip != null && top.height > tip;
+    online = true; tip = top.height; tipBlock = top;
+    if (fresh) onNewBlock(top);
+  } catch (e) { online = false; }
+  renderLive();
+}
+async function pollMempool() {
+  try { liveFees = await getJSON('/v1/fees/recommended', 6000); } catch (e) {}
+  try { liveAdj = await getJSON('/v1/difficulty-adjustment', 6000); } catch (e) {}
+  try { const m = await getJSON('/mempool', 6000); mempool = {count: m.count, vsize: m.vsize}; } catch (e) {}
+  renderLive();
+}
+
+/* ───────── Dal blocco alle regole del livello ───────── */
+// live = partita sulla catena viva: solo lì un blocco minato in solo evoca il Minatore Solitario.
+function rules(b, live = false) {
+  const era = Math.floor(b.height / 210000);
+  const fp = clamp(Math.log2((b.medianFee || 0) + 1), 0, 8);
+  const lootMod = 1 + fp * .08; // la fee mediana arricchisce il bottino, non rende più forti i nemici
+  const gap = b.prevTs == null ? null : Math.max(0, b.ts - b.prevTs);
+  const g = gap == null ? 600 : gap;
+  const vision = g < 180 ? 7 : g < 600 ? 6 : g < 1200 ? 5 : g < 2400 ? 4 : 3;
+  const zeros = b.hash.match(/^0*/)[0].length;
+  const wr = clamp(b.weight / 4e6, 0, 1);
+  // Epoca di difficoltà: quanto il tempo medio dei blocchi si è allontanato dai 10 minuti.
+  const ep = b.epoch || null, nEp = ep ? b.height - ep.start : 0;
+  const minDiff = (b.difficulty || 1) <= 1; // difficoltà minima del protocollo: non può scendere, nessuna pressione
+  const epAvg = ep && nEp > 0 ? (b.ts - ep.startTs) / nEp : null;
+  const rawRatio = minDiff || epAvg == null ? 1 : epAvg / 600;
+  const hashRatio = 1 + (rawRatio - 1) * nEp / (nEp + 18); // prudenza nei primi blocchi dell'epoca
+  const hashMod = clamp(Math.pow(hashRatio, HASH_EXP), HASH_MIN, HASH_MAX);
+  return {
+    ep, nEp, epAvg, hashMod, hostile: hashMod >= HOSTILE,
+    retargetEst: epAvg == null || minDiff ? null : clamp(1 / rawRatio - 1, -.75, 3),
+    lastRetarget: ep && ep.prevDiff && nEp < 2016 && ep.start > 0 ? ep.diff / ep.prevDiff - 1 : null,
+    nextRetarget: ep ? ep.start + 2016 : b.height - b.height % 2016 + 2016,
+    era, eraInfo: ERAS[Math.min(era, ERAS.length - 1)], fp, lootMod, gap, vision, zeros,
+    goldF: Math.log10((b.fees || 0) + 10),
+    diffMod: 1 + Math.log10((b.difficulty || 1) + 1) / 60,
+    W: 24 + Math.round(wr * 20), H: 18 + Math.round(wr * 12),
+    nRooms: clamp(3 + Math.floor(Math.log2(b.tx + 1)), 3, 14),
+    nEnemies: b.tx <= 1 ? (b.height === 0 ? 1 : 0) : clamp(Math.round(Math.log2(b.tx) * 1.2), 1, 16),
+    nChests: 1 + (b.nonce % 3),
+    relic: .03 + zeros * .004,
+    bossInfo: bossFor(b.pool, era, live),
+    get boss() { return this.bossInfo.name; },
+    solo: live && isSolo(b.pool),
+    halving: b.height > 0 && b.height % 210000 === 0,
+    retarget: b.height > 0 && b.height % 2016 === 0,
+    empty: b.tx <= 1 && b.height > 0,
+    genesis: b.height === 0,
+    storm: (b.medianFee || 0) >= 50,
+    calm: (b.medianFee || 0) <= 2,
+  };
+}
+
+function genFloor(b, R, depth) {
+  const rng = rngFromHash(b.hash), {W, H} = R;
+  const g = Array.from({length: H}, () => Array(W).fill(1));
+  const rooms = [];
+  for (let t = 0; t < 600 && rooms.length < R.nRooms; t++) {
+    const w = 4 + rng.int(5), h = 3 + rng.int(4);
+    const x = 1 + rng.int(W - w - 1), y = 1 + rng.int(H - h - 1);
+    if (rooms.some(r => x < r.x + r.w + 1 && x + w + 1 > r.x && y < r.y + r.h + 1 && y + h + 1 > r.y)) continue;
+    rooms.push({x, y, w, h, cx: x + (w >> 1), cy: y + (h >> 1)});
+    for (let yy = y; yy < y + h; yy++) for (let xx = x; xx < x + w; xx++) g[yy][xx] = 0;
+  }
+  rooms.sort((a, c) => a.cx - c.cx);
+  const dig = (x, y) => { if (y > 0 && y < H - 1 && x > 0 && x < W - 1) g[y][x] = 0; };
+  const corridor = (a, c) => {
+    const hFirst = rng() < .5;
+    let x = a.cx, y = a.cy;
+    const stepX = () => { while (x !== c.cx) { x += Math.sign(c.cx - x); dig(x, y); } };
+    const stepY = () => { while (y !== c.cy) { y += Math.sign(c.cy - y); dig(x, y); } };
+    if (hFirst) { stepX(); stepY(); } else { stepY(); stepX(); }
+  };
+  for (let i = 1; i < rooms.length; i++) corridor(rooms[i - 1], rooms[i]);
+  if (rooms.length > 4) corridor(rooms[rng.int(rooms.length)], rooms[rng.int(rooms.length)]);
+
+  const start = rooms[0];
+  let bossRoom = rooms[rooms.length - 1], best = -1;
+  rooms.forEach(r => { const d = Math.hypot(r.cx - start.cx, r.cy - start.cy); if (d > best) { best = d; bossRoom = r; } });
+  g[bossRoom.cy][bossRoom.cx] = 2; // scale
+  const occupied = new Set([start.cx + ',' + start.cy, bossRoom.cx + ',' + bossRoom.cy]);
+  const freeCell = (room) => {
+    for (let t = 0; t < 40; t++) {
+      const x = room.x + rng.int(room.w), y = room.y + rng.int(room.h), k = x + ',' + y;
+      if (g[y][x] === 0 && !occupied.has(k)) { occupied.add(k); return {x, y}; }
+    }
+    return null;
+  };
+  const others = rooms.length > 1 ? rooms.filter(r => r !== start) : rooms;
+
+  // Boss accanto alle scale
+  const bx = [[-1,0],[1,0],[0,-1],[0,1]].map(([dx,dy]) => ({x: bossRoom.cx + dx, y: bossRoom.cy + dy})).find(p => g[p.y][p.x] === 0) || {x: bossRoom.cx - 1, y: bossRoom.cy};
+  g[bx.y][bx.x] = 0; occupied.add(bx.x + ',' + bx.y);
+  const HM = R.hashMod, HMA = Math.pow(R.hashMod, HASH_ATK), HMR = Math.sqrt(R.hashMod); // HM: forza dei nemici, HMR: premio extra per il rischio
+  const boss = {boss: true, big: true, spr: R.bossInfo.spr, name: R.boss, epi: R.bossInfo.epi, move: R.bossInfo.move, x: bx.x, y: bx.y,
+    hp: Math.round((48 + depth * 11) * BASE_STR * R.diffMod * HM), atk: Math.round((7 + depth * 2.1) * BASE_STR * HMA), def: Math.round(3 + depth * 1.4),
+    xp: Math.round((30 + depth * 12) * BASE_STR * HMR), gold: Math.round(R.goldF * 12 * (1 + depth * .15) * R.lootMod * HMR)};
+  if (R.solo) { // il boss leggendario: più forte, e paga la ricompensa del blocco
+    Object.assign(boss, {legendary: true, spr: 'lonely', hp: Math.round(boss.hp * LEG_HP), atk: Math.round(boss.atk * LEG_ATK), def: Math.round(boss.def * 1.2),
+      xp: boss.xp * 4, gold: Math.max(1000, Math.round((b.reward || 312500000) / 1e5))});
+  }
+  const hist = run && run.mode === 'legend' && b.scrolls;
+  if (hist) { const H = HIST_BOSS; boss.hp = Math.round(boss.hp * Math.min(1, H.hp + H.hpD * depth)); boss.atk = Math.round(boss.atk * Math.min(1, H.atk + H.atkD * depth)); }
+  boss.maxhp = boss.hp;
+
+  const enemies = [boss];
+  // i nemici base non nascono nella stanza del boss (e non ci entrano: vedi canStand)
+  const enemyRooms = others.filter(r => r !== bossRoom).length ? others.filter(r => r !== bossRoom) : others;
+  for (let i = 0; i < R.nEnemies; i++) {
+    const c = freeCell(rng.pick(enemyRooms)); if (!c) continue;
+    const T = rng.pick(ROSTER);
+    const e = {spr: T.k, name: T.name, trait: T.trait || null, line: T.line, x: c.x, y: c.y,
+      hp: Math.round((14 + depth * 6) * T.hp * BASE_STR * HM), atk: Math.round((6 + depth * 2.0) * T.atk * BASE_STR * HMA), def: Math.round((2 + depth * 1.3) * T.def),
+      xp: Math.round((6 + depth * 4) * T.xp * BASE_STR * HMR), gold: Math.max(1, Math.round(R.goldF * (1.5 + rng() * 1.5) * (1 + depth * .15) * R.lootMod * HMR * (T.gold || 1)))};
+    e.maxhp = e.hp; enemies.push(e);
+  }
+  const items = [];
+  for (let i = 0; i < R.nChests; i++) {
+    const c = freeCell(rng.pick(others)); if (!c) continue;
+    const roll = rng();
+    const content = roll < R.relic ? {kind: 'relic'} : {kind: 'gold', n: Math.round(R.goldF * (6 + rng() * 10) * (1 + depth * .2) * R.lootMod)};
+    items.push({type: 'chest', x: c.x, y: c.y, content, opened: false});
+  }
+  const scrolls = hist;
+  if (R.genesis && !scrolls) { const c = freeCell(start); if (c) items.push({type: 'tablet', x: c.x, y: c.y}); }
+  if (R.retarget) { const c = freeCell(start); if (c) items.push({type: 'shrine', x: c.x, y: c.y, used: false}); }
+  if (scrolls) { // la prima nella stanza di partenza, le altre nelle stanze verso il guardiano, in ordine di distanza
+    const way = rooms.filter(r => r !== start && r !== bossRoom).sort((a, c) => Math.hypot(a.cx - start.cx, a.cy - start.cy) - Math.hypot(c.cx - start.cx, c.cy - start.cy));
+    scrolls.forEach((text, i) => {
+      const room = i === 0 || !way.length ? start : way[Math.min(way.length - 1, Math.floor((i - 1) * way.length / Math.max(1, scrolls.length - 1)))];
+      const c = freeCell(room) || freeCell(start); if (c) items.push({type: 'scroll', x: c.x, y: c.y, text, n: i + 1, of: scrolls.length, read: false});
+    });
+  }
+
+  return {b, R, W, H, g, rooms, bossRoom: {x: bossRoom.x, y: bossRoom.y, w: bossRoom.w, h: bossRoom.h}, start: {x: start.cx, y: start.cy}, stairs: {x: bossRoom.cx, y: bossRoom.cy}, boss, enemies, items, met: new Set(),
+    seen: Array.from({length: H}, () => Array(W).fill(false)), vis: Array.from({length: H}, () => Array(W).fill(false))};
+}
+
+function los(x0, y0, x1, y1) {
+  let dx = Math.abs(x1 - x0), sx = x0 < x1 ? 1 : -1, dy = -Math.abs(y1 - y0), sy = y0 < y1 ? 1 : -1, err = dx + dy, x = x0, y = y0;
+  for (;;) {
+    if (x === x1 && y === y1) return true;
+    if (!(x === x0 && y === y0) && floor.g[y][x] === 1) return false;
+    const e2 = 2 * err;
+    if (e2 >= dy) { err += dy; x += sx; }
+    if (e2 <= dx) { err += dx; y += sy; }
+  }
+}
+function computeVis() {
+  const r = floor.R.vision;
+  for (const row of floor.vis) row.fill(false);
+  for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+    if (dx * dx + dy * dy > r * r + r) continue;
+    const x = P.x + dx, y = P.y + dy;
+    if (x < 0 || y < 0 || x >= floor.W || y >= floor.H) continue;
+    if (los(P.x, P.y, x, y)) { floor.vis[y][x] = true; floor.seen[y][x] = true; }
+  }
+}
+
+/* ───────── Rendering ───────── */
+function setPalette(era) {
+  pal = era === 'legend' ? LEGEND_PAL : ERAS[clamp(era, 0, ERAS.length - 1)].p;
+  const s = document.documentElement.style;
+  ['--c0', '--c1', '--c2', '--c3'].forEach((k, i) => s.setProperty(k, pal[i]));
+  sprCache.clear();
+}
+// Fotogramma di animazione: alterna la sprite col suo "_b" ogni 400 ms (fermo con movimento ridotto)
+const anim = (name, t) => (!reduced && Math.floor(t / 400) % 2 && SPR[name + '_b']) ? name + '_b' : name;
+function spr(name, flash) {
+  const key = name + (flash ? '!' : '');
+  let c = sprCache.get(key); if (c) return c;
+  const rows = SPR[name] || SPR.g_knight;
+  c = document.createElement('canvas'); c.width = rows[0].length; c.height = rows.length;
+  const g = c.getContext('2d');
+  rows.forEach((row, y) => { for (let x = 0; x < row.length; x++) { const ch = row[x]; if (ch === '.' || ch === undefined) continue; g.fillStyle = flash ? pal[3] : pal[+ch]; g.fillRect(x, y, 1, 1); } });
+  sprCache.set(key, c); return c;
+}
+const isFloor = (x, y) => floor.g[y] && floor.g[y][x] !== undefined && floor.g[y][x] !== 1;
+function drawTile(x, y, px, py) {
+  const t = floor.g[y][x];
+  if (t === 1) {
+    let near = false;
+    for (let dy = -1; dy <= 1 && !near; dy++) for (let dx = -1; dx <= 1; dx++) if (isFloor(x + dx, y + dy)) { near = true; break; }
+    ctx.fillStyle = pal[0]; ctx.fillRect(px, py, TS, TS);
+    if (!near) return;
+    ctx.fillStyle = pal[1]; ctx.fillRect(px, py, TS, TS);
+    for (let r = 0; r < 4; r++) {
+      const yy = py + r * 4, off = (r + y) % 2 ? 4 : 0;
+      ctx.fillStyle = pal[2]; ctx.fillRect(px, yy, TS, 1);
+      ctx.fillStyle = pal[0]; ctx.fillRect(px, yy + 3, TS, 1); ctx.fillRect(px + off, yy, 1, 3); ctx.fillRect(px + off + 8, yy, 1, 3);
+    }
+    if (isFloor(x, y + 1)) { ctx.fillStyle = pal[0]; ctx.fillRect(px, py + 14, TS, 2); }
+    return;
+  }
+  ctx.fillStyle = pal[0]; ctx.fillRect(px, py, TS, TS);
+  const h = (Math.imul(x, 73856093) ^ Math.imul(y, 19349663)) >>> 0;
+  if (h % 5 === 0) { ctx.fillStyle = pal[1]; ctx.fillRect(px + 2 + (h >> 3) % 11, py + 2 + (h >> 7) % 11, 2, 1); }
+  if (t === 2) {
+    const locked = !floor.boss.dead;
+    for (let i = 0; i < 5; i++) { ctx.fillStyle = locked ? pal[1] : pal[i % 2 ? 2 : 3]; ctx.fillRect(px + 1 + i, py + 2 + i * 3, 14 - i * 2, 2); }
+  }
+}
+function drawItem(it, px, py) {
+  if (it.type === 'chest') { ctx.drawImage(spr(it.opened ? 'chestOpen' : 'chest'), px, py); return; }
+  if (it.type === 'tablet') {
+    ctx.fillStyle = pal[2]; ctx.fillRect(px + 3, py + 2, 10, 13); ctx.fillStyle = pal[0];
+    for (let i = 0; i < 4; i++) ctx.fillRect(px + 5, py + 5 + i * 2, 6 - (i % 2) * 2, 1);
+    return;
+  }
+  if (it.type === 'scroll') { // rotolo: chiaro finché non lo leggi
+    ctx.fillStyle = it.read ? pal[1] : pal[3]; ctx.fillRect(px + 4, py + 4, 8, 8);
+    ctx.fillStyle = pal[2]; ctx.fillRect(px + 3, py + 3, 10, 2); ctx.fillRect(px + 3, py + 11, 10, 2);
+    ctx.fillStyle = pal[0]; for (let i = 0; i < 3; i++) ctx.fillRect(px + 5, py + 6 + i * 2, 6 - (i % 2) * 2, 1);
+    if (!it.read && Math.floor(performance.now() / 400) % 3 === 0) { ctx.fillStyle = pal[3]; ctx.fillRect(px + 13, py + 1, 1, 1); }
+    return;
+  }
+  if (it.type === 'shrine') {
+    ctx.fillStyle = it.used ? pal[1] : pal[3];
+    for (let i = 0; i < 6; i++) ctx.fillRect(px + 8 - i, py + 2 + i, i * 2, 1), ctx.fillRect(px + 8 - i, py + 13 - i, i * 2, 1);
+  }
+}
+const drops = Array.from({length: 46}, () => ({x: Math.random() * 256, y: Math.random() * 192, v: 2 + Math.random() * 2}));
+
+// la camera può scendere di 2 righe oltre il bordo alto, così l'HUD non copre mai l'eroe
+// Sul telefono l'eroe sta più in alto, così i pollici sui controlli non lo coprono; la mappa può salire sopra i controlli.
+const cam = () => {
+  const top = -2, vis = VH - Math.ceil(CTL / TS);
+  return {camX: clamp(P.x - (VW >> 1), 0, Math.max(0, floor.W - VW)), camY: clamp(P.y - HERO_ROW, top, Math.max(top, floor.H - vis))};
+};
+function drawFloor(t) {
+  const {camX, camY} = cam();
+  for (let vy = 0; vy < VH; vy++) for (let vx = 0; vx < VW; vx++) {
+    const x = camX + vx, y = camY + vy;
+    if (x < 0 || y < 0 || x >= floor.W || y >= floor.H || !floor.seen[y][x]) continue;
+    drawTile(x, y, vx * TS, vy * TS);
+  }
+  for (const it of floor.items) if (floor.seen[it.y][it.x]) drawItem(it, (it.x - camX) * TS, (it.y - camY) * TS);
+  const bob = reduced ? 0 : Math.floor(t / 420) % 2;
+  for (const e of floor.enemies) {
+    if (e.dead || (!floor.vis[e.y][e.x] && !e.legendary)) continue;
+    const ex = (e.x - camX) * TS, ey = (e.y - camY) * TS;
+    if (e.legendary) { // brilla nel buio: si vede da qualsiasi punto della mappa
+      ctx.fillStyle = pal[3];
+      for (let i = 0; i < 6; i++) { const a = t / 260 + i * 1.047; ctx.fillRect(Math.round(ex + 8 + Math.cos(a) * 18), Math.round(ey + Math.sin(a) * 18), 1, 1); }
+    }
+    const flash = (e.legendary && !reduced && Math.floor(t / 180) % 6 === 0) || performance.now() < (e.hitUntil || 0);
+    if (e.big) { ctx.drawImage(spr(anim('g_' + e.spr, t), flash), ex - 8, ey - 16); continue; } // i guardiani sono alti due caselle
+    if (e.bonesUntil) { // ossa a terra con il conto alla rovescia
+      ctx.drawImage(spr('bones'), ex, ey);
+      drawNumber(String(Math.max(1, Math.ceil((e.bonesUntil - clock()) / 1000))), ex + 8, ey - 8, 3);
+      continue;
+    }
+    ctx.drawImage(spr(anim(e.spr, t), flash), ex, ey - bob);
+    if (e.hp < e.maxhp) { ctx.fillStyle = pal[0]; ctx.fillRect(ex + 1, ey - 3, 14, 3); ctx.fillStyle = pal[2]; ctx.fillRect(ex + 2, ey - 2, Math.max(1, Math.round(12 * e.hp / e.maxhp)), 1); }
+    if (e.windup) drawBang(ex + 6, ey - 12); // sta per colpire
+    else { const ic = e.trait && !(e.trait === 'revive' && e.revived) && ICONS[e.trait]; if (ic) drawIcon(ic, ex + 4, ey - 10 - bob); }
+  }
+  // velo sulle zone già esplorate ma fuori dalla vista
+  ctx.globalAlpha = .62; ctx.fillStyle = pal[0];
+  for (let vy = 0; vy < VH; vy++) for (let vx = 0; vx < VW; vx++) {
+    const x = camX + vx, y = camY + vy;
+    if (x >= 0 && y >= 0 && x < floor.W && y < floor.H && floor.seen[y][x] && !floor.vis[y][x]) ctx.fillRect(vx * TS, vy * TS, TS, TS);
+  }
+  ctx.globalAlpha = 1;
+  drawHero((P.x - camX) * TS, (P.y - camY) * TS - bob);
+  drawFloaters(f => [(f.x - camX) * TS + 8, (f.y - camY) * TS]);
+  const le = floor.enemies.find(e => e.legendary && !e.dead);
+  if (le && !floor.vis[le.y][le.x] && (reduced || Math.floor(t / 300) % 2)) { // faro: indica dove si trova il Minatore Solitario
+    const bx = clamp((le.x - camX) * TS + 6, 3, 249), by = clamp((le.y - camY) * TS + 6, 3, H() - CTL - 7);
+    ctx.fillStyle = pal[3]; ctx.fillRect(bx, by + 1, 4, 2); ctx.fillRect(bx + 1, by, 2, 4);
+  }
+  if (floor.R.storm && !reduced) {
+    ctx.fillStyle = pal[2]; ctx.globalAlpha = .55;
+    for (const d of drops) { d.y += d.v; d.x -= d.v * .4; if (d.y > H()) { d.y = -4; d.x = Math.random() * 300; } ctx.fillRect(d.x | 0, d.y | 0, 1, 3); }
+    ctx.globalAlpha = 1;
+  }
+}
+// Icone e numeri in pixel, con un bordino scuro per leggerli su qualsiasi sfondo
+function drawIcon(rows, x, y) {
+  ctx.fillStyle = pal[0]; ctx.fillRect(x - 1, y - 1, rows[0].length + 2, rows.length + 2);
+  ctx.fillStyle = pal[3];
+  rows.forEach((r, yy) => [...r].forEach((ch, xx) => { if (ch === '1') ctx.fillRect(x + xx, y + yy, 1, 1); }));
+}
+function drawNumber(text, cx, y, col) {
+  const w = text.length * 4 - 1, x0 = Math.round(cx - w / 2);
+  ctx.fillStyle = pal[0]; ctx.fillRect(x0 - 1, y - 1, w + 2, 7);
+  ctx.fillStyle = pal[col];
+  [...text].forEach((ch, i) => { const g = DIGITS[ch]; if (g) for (let k = 0; k < 15; k++) if (g[k] === '1') ctx.fillRect(x0 + i * 4 + k % 3, y + Math.floor(k / 3), 1, 1); });
+}
+// Punto esclamativo sopra il nemico che sta per colpire
+function drawBang(x, y) {
+  ctx.fillStyle = pal[0]; ctx.fillRect(x - 1, y - 1, 5, 10);
+  ctx.fillStyle = pal[3]; ctx.fillRect(x, y, 3, 5); ctx.fillRect(x, y + 6, 3, 2);
+}
+// Eroe sulla mappa: una sprite per direzione (di fronte, di spalle, di profilo; a sinistra il profilo è specchiato).
+// Lo scudo è sempre in mano (copre la mano che lo tiene); con B tenuto premuto è alzato davanti e copre entrambe le mani. La spada esce dalla mano, di lato al corpo, solo durante il colpo.
+function drawHero(hx, hy) {
+  const now = performance.now(), [dx, dy] = hero.dir;
+  const d = dy < 0 ? 'u' : dy > 0 ? 'd' : dx > 0 ? 'r' : 'l';
+  const blink = now < heroHitUntil || (clock() < hero.iframeUntil && Math.floor(now / 70) % 2 === 0);
+  const swing = clock() - hero.swingAt, atk = swing >= 0 && swing < RT.swing, up = hero.shield;
+  if (up && d === 'u') ctx.drawImage(spr('shBig'), hx + 2, hy - 4); // di spalle lo scudo alzato spunta sopra la testa
+  const img = spr(d === 'u' ? (up ? 'heroUpGuard' : 'heroUp') : d === 'd' ? 'hero' : 'heroSide', blink);
+  if (d === 'l') { ctx.save(); ctx.translate(hx + TS, hy); ctx.scale(-1, 1); ctx.drawImage(img, 0, 0); ctx.restore(); }
+  else ctx.drawImage(img, hx, hy);
+  if (atk) { const [k, ox, oy] = {r: ['swR', 10, 8], l: ['swL', -8, 8], d: ['swD', 1, 9], u: ['swU', 11, -2]}[d]; ctx.drawImage(spr(k), hx + ox, hy + oy); }
+  if (up) { if (d === 'd') ctx.drawImage(spr('shBig'), hx + 2, hy + 5); else if (d === 'r') ctx.drawImage(spr('shSide'), hx + 12, hy + 5); else if (d === 'l') ctx.drawImage(spr('shSide'), hx, hy + 5); }
+  else if (!(atk && (d === 'r' || d === 'l'))) { const [ox, oy] = {d: [10, 7], u: [0, 7], r: [10, 7], l: [0, 7]}[d]; ctx.drawImage(spr('shS'), hx + ox, hy + oy); }
+}
+// Danni e bottino che salgono e svaniscono in 0,8 secondi
+const floaters = [];
+function floatText(text, where, col = 3) { floaters.push({text: String(text), t0: performance.now(), col, ...where}); }
+function drawFloaters(toPx) {
+  const now = performance.now();
+  for (let i = floaters.length - 1; i >= 0; i--) {
+    const f = floaters[i], age = now - f.t0;
+    if (age > 800) { floaters.splice(i, 1); continue; }
+    if (!!f.arena !== !!battle) continue;
+    const [px, py] = toPx(f);
+    drawNumber(f.text, px, Math.round(py - 6 - age / 40), f.col);
+  }
+}
+let heroHitUntil = 0;
+function platform(cx, cy, rx, ry) { for (let y = -ry; y <= ry; y++) { const w = Math.round(rx * Math.sqrt(1 - (y / ry) ** 2)); ctx.fillStyle = pal[y < -ry + 2 ? 2 : 1]; ctx.fillRect(cx - w, cy + y, w * 2, 1); } }
+// Arena: il guardiano in alto a destra, l'eroe di spalle in basso a sinistra (stile Pokémon)
+const ARENA = {ex: 154, ey: 16, hx: 34, hy: 84};
+function drawBattle(t) {
+  ctx.translate(0, ARENA_Y); // sul telefono in verticale l'arena scende vicino al menu dei comandi
+  ctx.fillStyle = pal[1];
+  for (let i = 0; i < 9; i++) ctx.fillRect(0, 66 + Math.round(i * i * 1.3), 256, 1);
+  const e = battle.e, now = performance.now(), a = battle.anim, k = a && now - a.t0 < 200 ? Math.sin((now - a.t0) / 200 * Math.PI) : 0;
+  if (e.legendary) { ctx.fillStyle = pal[1]; for (let i = 0; i < 12; i++) { const ang = t / 900 + i * .5236; ctx.fillRect(186 + Math.round(Math.cos(ang) * 50), 50 + Math.round(Math.sin(ang) * 36), 2, 2); } }
+  platform(186, 80, 40, 7);
+  platform(66, 146, 50, 10);
+  const bob = reduced ? 0 : Math.round(Math.sin(t / 320) * 1.5);
+  const ex = ARENA.ex + (a && a.who === 'enemy' ? -k * 10 : 0) + (now < battle.shakeE ? Math.round(Math.random() * 4 - 2) : 0);
+  const ey = ARENA.ey + bob + (a && a.who === 'enemy' ? k * 8 : 0);
+  const blink = now < battle.shakeE && Math.floor(t / 60) % 2 === 0;
+  ctx.drawImage(spr(anim('g_' + e.spr, t), blink), ex, ey, 64, 64);
+  const hx = ARENA.hx + (a && a.who === 'hero' ? k * 12 : 0), hy = ARENA.hy + (a && a.who === 'hero' ? -k * 8 : 0);
+  ctx.drawImage(spr('heroBack', now < heroHitUntil && Math.floor(t / 60) % 2 === 0), hx, hy, 64, 64);
+  // mossa annunciata: nuvoletta con l'icona sopra il guardiano
+  const intent = battleIntent();
+  if (intent && (reduced || Math.floor(t / 400) % 4 !== 0)) {
+    ctx.fillStyle = pal[0]; ctx.fillRect(216, 2, 36, 17); ctx.fillStyle = pal[3];
+    ctx.fillRect(216, 2, 36, 1); ctx.fillRect(216, 18, 36, 1); ctx.fillRect(216, 2, 1, 17); ctx.fillRect(251, 2, 1, 17); ctx.fillRect(220, 19, 2, 2); ctx.fillRect(218, 21, 2, 2);
+    const ic = BIG_ICONS[intent.icon];
+    ic.forEach((r, yy) => [...r].forEach((ch, xx) => { if (ch === '1') ctx.fillRect(221 + xx, 6 + yy, 1, 1); }));
+    ctx.fillStyle = pal[2]; ctx.fillRect(240, 5, 3, 7); ctx.fillRect(240, 13, 3, 2);
+  }
+  drawFloaters(f => [f.px, f.py]);
+}
+function drawAttract(t) {
+  ctx.translate(0, Math.max(0, H() - CTL - 192));
+  ctx.fillStyle = pal[1];
+  for (let i = 0; i < 40; i++) { const h = Math.imul(i + 1, 2654435761) >>> 0; ctx.fillRect(h % 256, (h >> 9) % 150, 1, 1); }
+  const off = reduced ? 0 : (t / 45) % 52;
+  for (let i = -1; i < 7; i++) {
+    const x = Math.round(i * 52 - off + 6), y = 168;
+    ctx.fillStyle = pal[1]; ctx.fillRect(x + 30, y + 10, 22, 2);
+    ctx.fillRect(x, y, 30, 24); ctx.fillStyle = pal[2]; ctx.fillRect(x, y, 30, 2); ctx.fillRect(x, y, 2, 24);
+    ctx.fillStyle = pal[0]; for (let k = 0; k < 3; k++) ctx.fillRect(x + 6, y + 7 + k * 5, 18 - k * 4, 2);
+  }
+}
+function frame(t) {
+  if (simNow === null) mapTick();
+  ctx.fillStyle = pal[0]; ctx.fillRect(0, 0, 256, H());
+  ctx.save();
+  if (performance.now() < shakeUntil) ctx.translate(Math.round(Math.random() * 4 - 2), Math.round(Math.random() * 4 - 2));
+  if (state === 'story' && story) drawStory(t);
+  else if (battle) drawBattle(t);
+  else if (floor && P && state !== 'title' && state !== 'height' && state !== 'boot') drawFloor(t);
+  else drawAttract(t);
+  ctx.restore();
+  if (!battle && floor && P && ['explore', 'dead'].includes(state)) drawOrbs();
+  else if (ocv.dataset.on !== '0') octx.clearRect(0, 0, ocv.width, ocv.height);
+  ocv.dataset.on = !battle && floor && P && ['explore', 'dead'].includes(state) ? '1' : '0';
+  if (performance.now() < flashUntil && !reduced && Math.floor(t / 70) % 2 === 0) { ctx.fillStyle = pal[3]; ctx.fillRect(0, 0, 256, H()); }
+  requestAnimationFrame(frame);
+}
+
+/* ───────── Finestre: dialoghi, menu, HUD ───────── */
+function say(text) {
+  return new Promise(res => {
+    dlg = {text, shown: 0, res, done: false};
+    $('dlg').hidden = false; $('dlgMore').hidden = true;
+    typeTick();
+  });
+}
+function typeTick() {
+  if (!dlg) return;
+  dlg.shown = reduced ? dlg.text.length : Math.min(dlg.text.length, dlg.shown + 2);
+  $('dlgText').textContent = dlg.text.slice(0, dlg.shown);
+  if (dlg.shown < dlg.text.length) dlg.timer = setTimeout(typeTick, 18);
+  else { dlg.done = true; $('dlgMore').hidden = false; }
+}
+function dlgAdvance() {
+  if (!dlg) return;
+  if (!dlg.done) { clearTimeout(dlg.timer); dlg.shown = dlg.text.length; reducedShow(); return; }
+  const r = dlg.res; dlg = null; $('dlg').hidden = true; r();
+}
+function reducedShow() { $('dlgText').textContent = dlg.text; dlg.done = true; $('dlgMore').hidden = false; }
+$('dlg').addEventListener('click', () => dlgAdvance());
+
+function openMenu(el, items, opts = {}) {
+  menu = {el, items, cols: opts.cols || 1, onBack: opts.onBack || null, hide: !!opts.hide};
+  menu.idx = Math.max(0, items.findIndex(i => !i.disabled));
+  drawMenu();
+}
+function drawMenu() {
+  const m = menu; m.el.hidden = false;
+  m.el.innerHTML = `<ul class="menu" style="--cols:${m.cols}">` + m.items.map((it, i) =>
+    `<li><button type="button" data-i="${i}" class="${i === m.idx ? 'sel' : ''}"${it.disabled ? ' aria-disabled="true"' : ''}>${esc(it.label)}${it.sub ? `<small>${esc(it.sub)}</small>` : ''}</button></li>`).join('') + '</ul>';
+  m.el.querySelectorAll('button').forEach(b => b.addEventListener('click', () => { if (menu !== m || dlg) return; unlockAudio(); m.idx = +b.dataset.i; menuSelect(); }));
+}
+function menuMove(a) {
+  const n = menu.items.length, c = menu.cols;
+  const d = {up: -c, down: c, left: -1, right: 1}[a]; if (d === undefined) return;
+  if (c === 1 && (a === 'left' || a === 'right')) return;
+  menu.idx = (menu.idx + d + n) % n; SFX.sel(); drawMenu();
+}
+function menuSelect() {
+  const it = menu.items[menu.idx];
+  if (it.disabled) { SFX.bump(); return; }
+  SFX.sel(); closeMenu(); it.act();
+}
+function closeMenu() {
+  if (!menu) return;
+  menu.el.innerHTML = ''; if (menu.hide) menu.el.hidden = true;
+  menu = null;
+}
+function showCenter(html, clear = false, kind = '') {
+  const c = $('center'); c.hidden = false; c.classList.toggle('clear', clear); c.classList.toggle('title', kind === 'title');
+  $('cbody').innerHTML = html; $('cmenu').innerHTML = ''; $('cside').innerHTML = ''; c.scrollTop = 0;
+}
+function hideCenter() { $('center').hidden = true; $('cbody').innerHTML = ''; $('cmenu').innerHTML = ''; }
+// sats nella sfera: numero intero fino a 9.999, poi in migliaia (il numero esatto è nel MENU e in classifica)
+const orbNum = n => n < 1e4 ? String(n) : n < 1e6 ? Math.floor(n / 1e3) + 'K' : (n / 1e6).toFixed(1) + 'M';
+const orbFont = t => (t.length <= 2 ? 2.6 : t.length === 3 ? 2.3 : t.length === 4 ? 1.85 : 1.5) + 'cqw';
+function renderHud() {
+  const h = $('hud'), o = $('orbs');
+  document.body.classList.toggle('playing', !!(P && floor && !battle && ['explore', 'dead'].includes(state)));
+  if (!P || !floor || battle || !['explore', 'dead'].includes(state)) { h.hidden = true; o.hidden = true; renderHbar(); return; }
+  h.hidden = false; o.hidden = false;
+  h.textContent = '#' + fmt(floor.b.height);
+  const hp = String(P.hp), sats = orbNum(P.gold);
+  const sc = orbG().r / 12; // i numeri crescono con la sfera
+  $('oHp').textContent = hp; $('oHp').style.fontSize = `calc(${orbFont(hp)} * ${sc})`; $('oHp').classList.toggle('low', P.hp <= P.maxhp * .3);
+  $('oSats').textContent = sats; $('oSats').style.fontSize = `calc(${orbFont(sats)} * ${sc})`;
+  $('oLv').textContent = lvLabel(P);
+  const g = orbG(); for (const k of ['r', 'lx', 'rx', 'cy']) o.style.setProperty('--' + k, g[k]);
+  renderHbar();
+}
+// Le due sfere: vita (rossa, il liquido scende con i colpi) e sats (oro). Colori fissi, uguali in ogni era.
+// Si disegnano su #ocv, alla risoluzione vera dello schermo, con pixel tutti della stessa misura (p pixel reali per pixel del gioco).
+const ORB = {hp: ['#a81f16', '#e8553f', '#3a0f0a'], sats: ['#e3a12a', '#f6cf62', '#3a2a0a']};
+const ocv = $('ocv'), octx = ocv.getContext('2d');
+let OK = 1; // pixel reali dello schermo per pixel del gioco
+function drawOrb(cx, cy, r, frac, [liq, wave, glass]) {
+  const p = Math.max(1, Math.round(OK)), X = Math.round(cx * OK), Y = Math.round(cy * OK);
+  const px = (x, y, c) => { octx.fillStyle = c; octx.fillRect(X + x * p - (p >> 1), Y + y * p - (p >> 1), p, p); };
+  const lvl = r - Math.round(2 * r * clamp(frac, 0, 1));
+  for (let y = -r - 2; y <= r + 2; y++) for (let x = -r - 2; x <= r + 2; x++) {
+    const d = x * x + y * y;
+    if (d <= r * r + r * .6) px(x, y, y < lvl ? glass : y === lvl && (x + y + 99) % 3 ? wave : liq);
+    else if (d <= (r + 1) * (r + 1) + (r + 1) * .6) px(x, y, pal[1]);
+    else if (d <= (r + 2) * (r + 2) + (r + 2) * .6) px(x, y, pal[0]);
+  }
+  px(-r + 4, -r + 5, 'rgba(255,255,255,.55)'); px(-r + 5, -r + 5, 'rgba(255,255,255,.55)'); px(-r + 6, -r + 3, 'rgba(255,255,255,.55)'); px(-r + 7, -r + 3, 'rgba(255,255,255,.55)');
+}
+// Sfere in basso; sul telefono più grandi e subito sopra i controlli
+const orbG = () => { const r = TOUCH ? 17 : 12, lx = r + 4, rx = 255 - r - 4; return {r, lx, rx, cy: H() - CTL - r - 5}; };
+function drawOrbs() {
+  const g = orbG();
+  octx.clearRect(0, 0, ocv.width, ocv.height);
+  drawOrb(g.lx, g.cy, g.r, P.hp / P.maxhp, ORB.hp);
+  drawOrb(g.rx, g.cy, g.r, 1, ORB.sats);
+}
+// Cosa farà il guardiano al prossimo turno (null = attacco normale)
+function battleIntent() {
+  if (!battle) return null;
+  const e = battle.e;
+  if (battle.charging) return {icon: 'nonce', label: 'LUCKY NONCE'};
+  if (battle.rebootPending) return {icon: 'reboot', label: 'BITAXE REBOOT'};
+  if (battle.intent === 'special') return {icon: 'special', label: e.move};
+  return null;
+}
+// Riquadro del guardiano (in alto a sinistra) con la mossa annunciata
+function renderEbar() {
+  const el = $('ebar');
+  if (!battle) { el.hidden = true; return; }
+  const e = battle.e, it = battleIntent(); el.hidden = false;
+  el.innerHTML = `<div class="nm">${esc(e.name)}</div><div class="bar"><i style="width:${Math.max(0, e.hp / e.maxhp * 100)}%"></i></div>` +
+    `<div class="intent">${it ? `Next: ${esc(it.label)}` : '&nbsp;'}</div>`;
+}
+// Riquadro dell'eroe (in basso a destra) nell'arena
+function renderHbar() {
+  const el = $('hbar');
+  if (!battle || !P) { el.hidden = true; return; }
+  el.hidden = false;
+  const low = P.hp <= P.maxhp * .3 ? ' class="low"' : '';
+  el.innerHTML = `<div class="nm">${esc(player.name || 'HERO')} <span>LV ${P.lvl}</span></div><div class="bar"><i style="width:${Math.max(0, P.hp / P.maxhp * 100)}%"></i></div>` +
+    `<div><span${low}>HP ${P.hp}/${P.maxhp}</span> · ${fmt(P.gold)} SATS</div>${noRanks() ? '' : `<div class="rk">${esc(rankOf(P).toUpperCase())}</div>`}`;
+}
+// Riga dei messaggi sulla mappa: non blocca il gioco, sparisce da sola
+let logTimer = 0, scrollLog = false; // scrollLog: la riga mostra una pergamena (sparisce appena ti sposti)
+function log(text, ms = 2800) {
+  const el = $('log'); el.textContent = text; el.hidden = false; scrollLog = false;
+  clearTimeout(logTimer); logTimer = setTimeout(() => { el.hidden = true; }, ms);
+}
+let toastTimer = 0;
+function toast(html) {
+  const t = $('toast'); t.innerHTML = html; t.hidden = false;
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true; }, 5000);
+}
+
+/* ───────── Pannelli laterali ───────── */
+function renderBlockCard(b, R, label) {
+  const z = b.hash.match(/^0*/)[0];
+  $('blockCard').innerHTML = `<h3>${esc(label)}</h3>
+    <p class="height">#${fmt(b.height)}</p>
+    ${b.legend ? `<p class="legendTxt">${esc(b.legend)}</p>` : ''}
+    <p class="hash"><span class="z">${z}</span>${b.hash.slice(z.length)}</p>
+    <dl class="kv">
+      <dt>Mined by</dt><dd>${esc(b.pool === 'Unknown' ? 'unknown' : b.pool)}</dd>
+      <dt>Date</dt><dd>${(d => d.toLocaleDateString('en-US', {dateStyle: 'medium'}) + ' ' + d.toLocaleTimeString('en-GB', {hour: '2-digit', minute: '2-digit'}))(new Date(b.ts * 1000))}</dd>
+      <dt>Transactions</dt><dd>${fmt(b.tx)}</dd>
+      <dt>Weight</dt><dd>${wu(b.weight)}</dd>
+      <dt>Median fee</dt><dd>${fmt(b.medianFee)} sat/vB</dd>
+      <dt>Total fees</dt><dd>${btc(b.fees)}</dd>
+      <dt>Reward</dt><dd>${btc(b.reward)}</dd>
+      <dt>Since last block</dt><dd>${dur(R.gap)}</dd>
+      <dt>Epoch</dt><dd>${R.ep ? `${fmt(R.nEp + 1)} of 2016` : '—'}</dd>
+      <dt>Epoch average</dt><dd>${R.epAvg != null ? dur(Math.round(R.epAvg)) : '—'}</dd>
+      <dt>Last retarget</dt><dd>${R.lastRetarget != null ? pct(R.lastRetarget) : '—'}</dd>
+      <dt>Next retarget</dt><dd>${R.retargetEst != null ? `${pct(R.retargetEst)} at #${fmt(R.nextRetarget)}` : '—'}</dd>
+    </dl>
+    <a class="verify" href="https://mempool.space/block/${b.hash}" target="_blank" rel="noopener">VERIFY ON MEMPOOL.SPACE ↗</a>`;
+  const rows = [
+    [`${fmt(b.tx)} tx`, `${R.nRooms} rooms · ${R.nEnemies} enemies`],
+    [`weight ${wu(b.weight)}`, `map ${R.W}×${R.H}`],
+    [`fee ${fmt(b.medianFee)} sat/vB`, `loot +${Math.round((R.lootMod - 1) * 100)}%${R.storm ? ' · more items' : ''}`],
+    [`total fees ${btc(b.fees)}`, `sats ×${R.goldF.toLocaleString('en-US', {maximumFractionDigits: 1})}`],
+    [`wait ${dur(R.gap)}`, `sight ${R.vision} tiles`],
+    [b.pool === 'Unknown' ? 'unknown pool' : b.pool, `${R.solo ? '★ ' : ''}boss: ${R.boss}`],
+    [`difficulty ${sci(b.difficulty)}`, `boss +${Math.round((R.diffMod - 1) * 100)}% HP`],
+    [`${R.zeros} zeros in the hash`, `relics ${(R.relic * 100).toLocaleString('en-US', {maximumFractionDigits: 1})}%`],
+    [`nonce ${fmt(b.nonce)}`, `${R.nChests} ${R.nChests === 1 ? 'chest' : 'chests'}`],
+    [`height ${fmt(b.height)}`, `${R.eraInfo.name} · ${fmt(R.eraInfo.sub)} BTC`],
+    [R.epAvg != null ? `epoch average ${dur(Math.round(R.epAvg))}` : 'epoch average —', `enemy strength ${hashLabel(R.hashMod)}${R.hostile ? ' · hostile' : ''}`],
+  ];
+  const ev = [R.solo && '★ Solo-mined: the Lone Miner appears', R.genesis && "Genesis: Satoshi's tablet", R.halving && 'Halving: max HP +10', R.retarget && 'Retarget: healing shrine', R.empty && 'Empty block: only the boss'].filter(Boolean);
+  $('mapCard').innerHTML = `<h3>FROM BLOCK TO LEVEL</h3>
+    <ul class="map">${rows.map(([a, c]) => `<li><span>${esc(a)}</span><b>${esc(c)}</b></li>`).join('')}</ul>
+    ${ev.length ? `<p class="note">${ev.map(esc).join(' · ')}</p>` : ''}
+    <p class="note">Dungeon seed: the last 32 characters of the hash. Same block, same dungeon for everyone.</p>`;
+}
+function renderLive() {
+  $('dot').classList.toggle('on', online);
+  $('pillTxt').textContent = online && tip != null ? `LIVE · #${fmt(tip)}` : 'OFFLINE';
+  const c = $('liveCard');
+  if (!online || !tipBlock) {
+    c.innerHTML = `<h3>LIVE NETWORK</h3><p class="note">This page cannot reach mempool.space, so ${HISTORY.length ? `here you play ${HISTORY_NAME} (${HISTORY.length} blocks${HIST.offline ? ' of ' + HIST.offline : ''})` : 'the live chain is not available'}. Open the game from its website to play the chain in real time.</p>`;
+    return;
+  }
+  const ago = Math.max(0, Math.floor(Date.now() / 1000 - tipBlock.ts));
+  c.innerHTML = `<h3>LIVE NETWORK</h3>
+    <dl class="kv">
+      <dt>Latest block</dt><dd>#${fmt(tip)}</dd>
+      <dt>Found</dt><dd id="agoTxt">${dur(ago)} ago</dd>
+      <dt>By</dt><dd>${esc(tipBlock.pool)}</dd>
+      ${liveFees ? `<dt>Fast fee</dt><dd>${fmt(liveFees.fastestFee)} sat/vB</dd><dt>1-hour fee</dt><dd>${fmt(liveFees.hourFee)} sat/vB</dd>` : ''}
+      ${mempool ? `<dt>Mempool</dt><dd>${fmt(mempool.count)} tx</dd>` : ''}
+      ${liveAdj ? `<dt>Next retarget</dt><dd>in ${fmt(liveAdj.remainingBlocks)} blocks</dd><dt>Estimate</dt><dd>${pct(liveAdj.difficultyChange / 100)}</dd>` : ''}
+    </dl>`;
+}
+
+/* ───────── Nome del giocatore e classifica condivisa ───────── */
+/* NAMES:START */
+// Filtro dei nomi in classifica. FONTE UNICA: modifica solo questo file.
+
+const NAME_MIN = 2, NAME_MAX = 12;
+const NAME_ALLOWED = /^[\p{L}\p{N} ._'-]+$/u;
+// Numeri e simboli usati al posto delle lettere ("c4zz0", "$tr0nz0")
+const NAME_LEET = {'0': 'o', '1': 'i', '2': 'z', '3': 'e', '4': 'a', '5': 's', '6': 'g', '7': 't', '8': 'b', '9': 'g', '@': 'a', '$': 's', '!': 'i', '|': 'i', '€': 'e', '+': 't'};
+// Radici vietate: offese, volgarità, discriminazioni, bestemmie (confrontate dopo aver ridotto le lettere doppie).
+const NAME_BLOCKED = [
+  'cazo', 'stronz', 'puttan', 'putan', 'troia', 'merda', 'coglion', 'vafanculo', 'fanculo', 'minchi', 'pompin',
+  'sbora', 'zocol', 'frocio', 'froci', 'richion', 'negro', 'negra', 'negri', 'niger', 'niga', 'culo', 'suca',
+  'ritardat', 'mongoloid', 'handicapat', 'porcodio', 'diocan', 'dioporc', 'porcamadon', 'diobestia', 'dioboia',
+  'fuck', 'shit', 'bitch', 'cunt', 'dick', 'pusy', 'whore', 'slut', 'porn', 'rapist', 'fagot', 'retard',
+  'penis', 'vagina', 'dildo', 'hitler', 'heilhitler', 'siegheil', 'nazist', 'faggot', 'motherf', 'asshole', 'bastard'
+];
+// Nomi che si spacciano per il progetto o lo staff
+const NAME_RESERVED = ['halvinglabs', 'halving', 'proofofquest', 'admin', 'amministrator', 'moderator', 'moderat',
+  'staff', 'ufficial', 'oficial', 'sistema', 'system', 'root', 'suport'];
+
+function nameClean(raw) {
+  return String(raw == null ? '' : raw).normalize('NFC').replace(/\s+/g, ' ').trim();
+}
+// Riduce il nome alla sua "ossatura": minuscolo, senza accenti, numeri-lettere convertiti, solo a-z, niente doppie.
+function nameSkeleton(name) {
+  let s = name.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  s = s.replace(/[0-9@$!|€+]/g, c => NAME_LEET[c] || c);
+  s = s.replace(/[^a-z]/g, '');
+  return s.replace(/(.)\1+/g, '$1');
+}
+// Chiave normalizzata del nome ("Mario", "MARIO" e "M4rio" danno la stessa): oggi serve solo come informazione, i nomi non sono più unici.
+function nameKey(raw) {
+  const name = nameClean(raw);
+  return nameSkeleton(name) || name.toLowerCase();
+}
+function checkName(raw) {
+  const name = nameClean(raw);
+  if (name.length < NAME_MIN) return {ok: false, reason: 'Name too short: at least 2 characters.'};
+  if (name.length > NAME_MAX) return {ok: false, reason: 'Name too long: 12 characters max.'};
+  if (!NAME_ALLOWED.test(name)) return {ok: false, reason: "Use only letters, numbers, spaces and . _ - '"};
+  const low = name.toLowerCase();
+  if (/https?|www\.|\.(com|it|io|net|org|xyz|me|ly|gg|co)\b|t\.me/.test(low)) return {ok: false, reason: 'No links or addresses in the name.'};
+  if ((name.match(/\d/g) || []).length >= 6) return {ok: false, reason: 'Too many digits: no phone numbers or codes.'};
+  if (/k\s*k\s*k/.test(low)) return {ok: false, reason: 'This name is not allowed. Pick another one.'};
+  const sk = nameSkeleton(name);
+  const squash = w => w.replace(/(.)\1+/g, '$1');
+  if (NAME_RESERVED.some(r => sk.includes(squash(r)))) return {ok: false, reason: 'This name is reserved. Pick another one.'};
+  if (NAME_BLOCKED.some(b => sk.includes(squash(b)))) return {ok: false, reason: 'This name is not allowed. Pick another one.'};
+  return {ok: true, name, key: nameKey(name)};
+}
+/* NAMES:END */
+const PKEY = 'pq-player-v1';
+const randomId = () => { const a = new Uint8Array(16); crypto.getRandomValues(a); return [...a].map(b => b.toString(16).padStart(2, '0')).join(''); };
+function loadPlayer() {
+  try { const p = JSON.parse(localStorage.getItem(PKEY)); if (p && typeof p.id === 'string' && /^[a-f0-9]{32}$/.test(p.id)) return {id: p.id, name: typeof p.name === 'string' ? p.name.slice(0, 12) : ''}; } catch (e) {}
+  const p = {id: randomId(), name: ''}; savePlayer(p); return p;
+}
+function savePlayer(p) { try { localStorage.setItem(PKEY, JSON.stringify(p)); } catch (e) {} }
+const player = loadPlayer();
+const hn = () => player.name || 'HERO';
+const ord = n => { const sfx = ['th', 'st', 'nd', 'rd'], v = n % 100; return n + (sfx[(v - 20) % 10] || sfx[v] || sfx[0]); };
+// La classifica vive sul Worker Cloudflare del gioco: in locale o nell'anteprima non c'è.
+// La classifica esiste solo sul sito del gioco (Worker Cloudflare o prova locale), non da file:// né nelle anteprime su claude.ai
+const BOARD_ON = /^https?:$/.test(location.protocol) && !/(^|\.)(claude\.ai|claudeusercontent\.com|claude\.site)$/.test(location.hostname);
+async function api(path, opts = {}) {
+  if (!BOARD_ON) throw new Error('offline');
+  const c = new AbortController(), t = setTimeout(() => c.abort(), 6000);
+  try {
+    const r = await fetch('/api/' + path, {...opts, signal: c.signal, headers: {'content-type': 'application/json'}});
+    const j = await r.json().catch(() => null);
+    if (!j) throw new Error('nessun backend');
+    if (!r.ok) throw Object.assign(new Error(j.error || 'HTTP ' + r.status), {status: r.status});
+    return j;
+  } finally { clearTimeout(t); }
+}
+let board = null;
+async function loadBoard(limit) {
+  try { board = await api(`leaderboard?limit=${limit}&me=${player.id}`); } catch (e) { board = {error: e.message}; }
+  return board;
+}
+function boardUnavailable() {
+  return BOARD_ON ? 'The leaderboard is not responding right now. Try again soon.' : 'The shared leaderboard is available on the game website.';
+}
+// Donazioni: link facoltativo da CONTENT.supportUrl (nel gioco ufficiale la pagina BTCPay di Halving Labs). Non danno nulla nel gioco.
+const SUPPORT_URL = CONTENT.supportUrl || ''; // vuoto = niente link donazioni
+function renderTop5() {
+  renderTop5Board();
+  const el = $('cside'); if (!el || state !== 'title') return;
+  if (SUPPORT_URL) el.insertAdjacentHTML('beforeend', `<a class="support" href="${esc(SUPPORT_URL)}" target="_blank" rel="noopener">${esc(CONTENT.supportLink || '⚡ SUPPORT')}</a>`);
+}
+function renderTop5Board() {
+  const el = $('cside'); if (!el || state !== 'title') return;
+  if (!board) { el.innerHTML = '<h4>LEADERBOARD</h4><p>Loading…</p>'; return; }
+  if (board.error) { el.innerHTML = `<h4>LEADERBOARD</h4><p>${esc(boardUnavailable())}</p>`; return; }
+  const rows = board.rows.slice(0, 5);
+  el.innerHTML = '<h4>LEADERBOARD</h4>' + (rows.length
+    ? `<ol>${rows.map(r => `<li class="${r.me ? 'me' : ''}"><span>${r.rank}.</span><span>${esc(r.name)}${r.legends ? ' ★' : ''}</span><span>${fmt(r.sats)}</span></li>`).join('')}</ol>`
+      + (board.me && board.me.rank > 5 ? `<p class="me">You: ${ord(board.me.rank)} · ${fmt(board.me.sats)} sats</p>` : '')
+    : '<p>Nobody on the leaderboard yet. First place is open.</p>');
+}
+async function showBoard() {
+  state = 'height';
+  showCenter('<h2>LEADERBOARD</h2><p>Loading…</p>');
+  openMenu($('cmenu'), [{label: 'BACK', act: showTitle}], {onBack: showTitle});
+  await loadBoard(50);
+  if (state !== 'height' || !$('cbody')) return;
+  const head = '<h2>LEADERBOARD</h2><p class="status">SCORE = SATS OF THE BEST LIVE GAME · ★ = LONE MINER DEFEATED</p>';
+  if (board.error) { $('cbody').innerHTML = head + `<p>${esc(boardUnavailable())}</p>`; return; }
+  const rows = board.rows;
+  $('cbody').innerHTML = head + (rows.length ? `<table class="board"><thead><tr><th class="n">#</th><th>NAME</th><th>RANK</th><th class="n">SATS</th><th class="n">BLOCK</th><th class="n">FLOORS</th></tr></thead><tbody>
+    ${rows.map(r => `<tr class="${r.me ? 'me' : ''}"><td class="n">${r.rank}</td><td>${esc(r.name)}${r.legends ? ' ★' : ''}</td><td class="rk">${r.lvl ? esc(forumRank(r.lvl)) : '—'}</td><td class="n">${fmt(r.sats)}</td><td class="n">#${fmt(r.height)}</td><td class="n">${fmt(r.floors)}</td></tr>`).join('')}
+    </tbody></table>${board.me && !rows.some(r => r.me) ? `<p class="legend">You are ${ord(board.me.rank)} with ${fmt(board.me.sats)} sats.</p>` : ''}`
+    : '<p>Nobody on the leaderboard yet. Play a live game and take first place.</p>');
+}
+// Chiede il nome all'inizio di ogni partita (precompilato con quello precedente), poi avvia.
+function askName(next, back) {
+  state = 'height';
+  showCenter(`<h2>WHAT IS YOUR NAME, HERO?</h2>
+    <p>Your name will appear on the public leaderboard: do not use your real full name.</p>
+    <input id="pqName" maxlength="${NAME_MAX}" autocomplete="off" spellcheck="false" aria-label="Hero name" value="${esc(player.name)}">
+    <p id="nErr" class="legend" hidden></p>`);
+  const err = msg => { const e = $('nErr'); if (e) { e.hidden = false; e.textContent = msg; } SFX.bump(); };
+  let busy = false;
+  const go = () => {
+    if (busy) return; busy = true;
+    const r = checkName($('pqName').value);
+    if (!r.ok) { busy = false; err(r.reason); return; }
+    player.name = r.name; savePlayer(player); closeMenu(); next();
+  };
+  const nameMenu = () => openMenu($('cmenu'), [{label: 'START', act: () => { nameMenu(); go(); }}, {label: 'BACK', act: back}], {onBack: back});
+  $('pqName').addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Enter') { e.preventDefault(); go(); } if (e.key === 'Escape') { e.preventDefault(); closeMenu(); back(); } });
+  nameMenu();
+  setTimeout(() => { try { $('pqName').focus(); $('pqName').select(); } catch (e) {} }, 30);
+}
+// Invia i sats della partita live alla classifica (a ogni piano completato).
+async function submitScore() {
+  if (!run || run.mode !== 'live' || !player.name) return;
+  try {
+    const r = await api('score', {method: 'POST', body: JSON.stringify({id: player.id, run: run.id, name: player.name, sats: P.gold, height: run.lastHeight || run.height, floors: run.depth, legends: run.legends || 0, lvl: P.lvl})});
+    if (r.improved && r.rank) toast(`LEADERBOARD: ${ord(r.rank).toUpperCase()} PLACE<br>${fmt(r.best)} SATS`);
+  } catch (e) { /* la partita continua anche se la classifica non risponde */ }
+}
+
+/* ───────── PASSWORD (come nei giochi NES) ───────── */
+// La partita si salva anche online sotto una password di 16 caratteri: inserendola su un altro dispositivo si continua
+// con lo stesso eroe e la stessa riga in classifica. Alfabeto senza 0/O/1/I (≈ 80 bit). Il server tiene solo l'impronta.
+const PWKEY = 'pq-pass-v1';
+const PW_ABC = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const pwNorm = v => String(v || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+const pwFmt = p => p.match(/.{1,4}/g).join('-');
+const pwValid = p => /^[A-HJ-NP-Z2-9]{16}$/.test(p);
+function myPassword() {
+  let p = ''; try { p = localStorage.getItem(PWKEY) || ''; } catch (e) {}
+  if (!pwValid(p)) {
+    const a = new Uint8Array(16); crypto.getRandomValues(a);
+    p = [...a].map(b => PW_ABC[b & 31]).join('');
+    try { localStorage.setItem(PWKEY, p); } catch (e) {}
+  }
+  return p;
+}
+const lsGet = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+let pwLast = 0;
+async function syncPassword() {
+  if (!BOARD_ON) return false;
+  pwLast = Date.now();
+  try {
+    await api('password/save', {method: 'POST', body: JSON.stringify({password: myPassword(), id: player.id, name: player.name, data: {save: lsGet(SKEY), albo: lsGet(LKEY)}})});
+    return true;
+  } catch (e) { return false; }
+}
+// Dopo ogni salvataggio nel browser, al massimo una volta ogni 45 secondi
+function autoSync() { if (BOARD_ON && Date.now() - pwLast > 45000) syncPassword(); }
+function showPassword() {
+  state = 'height';
+  if (!BOARD_ON) {
+    showCenter('<h2>PASSWORD</h2><p>Passwords work on the game website, where your game is also saved online.</p>');
+    openMenu($('cmenu'), [{label: 'BACK', act: showTitle}], {onBack: showTitle});
+    return;
+  }
+  showCenter(`<h2>PASSWORD</h2>
+    <p>Write it down. Enter it on another device to continue your game and keep your place on the leaderboard.</p>
+    <p class="pw" aria-label="Your password">${pwFmt(myPassword())}</p>
+    <p class="status" id="pwSt">SAVING…</p>
+    <p class="legend">Keep it secret: it opens your game.</p>`);
+  openMenu($('cmenu'), [{label: 'ENTER A PASSWORD', sub: 'continue a game from another device', act: enterPassword}, {label: 'BACK', act: showTitle}], {onBack: showTitle});
+  syncPassword().then(ok => { const e = $('pwSt'); if (e) e.textContent = ok ? 'SAVED ONLINE ✓' : 'NOT SAVED: THE SERVER IS NOT RESPONDING. TRY AGAIN SOON.'; });
+}
+function enterPassword() {
+  state = 'height';
+  showCenter(`<h2>ENTER A PASSWORD</h2>
+    <p>16 letters and numbers. There is no 0, O, 1 or I.</p>
+    <input id="pqPass" maxlength="19" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-label="Password" placeholder="XXXX-XXXX-XXXX-XXXX">
+    <p id="pErr" class="legend" hidden></p>`);
+  const err = msg => { const e = $('pErr'); if (e) { e.hidden = false; e.textContent = msg; } SFX.bump(); };
+  let busy = false;
+  const go = async () => {
+    if (busy) return;
+    const p = pwNorm($('pqPass').value);
+    if (!pwValid(p)) { err('A password has 16 letters and numbers, without 0, O, 1 or I.'); return; }
+    if (p === myPassword()) { err('This is already the password of this device.'); return; }
+    busy = true; err('Checking…');
+    try {
+      const r = await api('password/load', {method: 'POST', body: JSON.stringify({password: p})});
+      confirmPassword(p, r);
+    } catch (e) { busy = false; err(e.message === 'offline' ? 'The server is not responding. Try again soon.' : e.message); }
+  };
+  const m = () => openMenu($('cmenu'), [{label: 'CONTINUE', act: () => { m(); go(); }}, {label: 'BACK', act: showPassword}], {onBack: showPassword});
+  const inp = $('pqPass');
+  inp.addEventListener('input', () => { const v = pwNorm(inp.value).slice(0, 16); const f = v ? pwFmt(v) : ''; if (inp.value !== f) inp.value = f; });
+  inp.addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Enter') { e.preventDefault(); go(); } if (e.key === 'Escape') { e.preventDefault(); closeMenu(); showPassword(); } });
+  m();
+  setTimeout(() => { try { inp.focus(); } catch (e) {} }, 30);
+}
+function confirmPassword(p, r) {
+  let sv = null, albo = [];
+  try { sv = r.data.save ? cleanSave(JSON.parse(r.data.save)) : null; } catch (e) {}
+  try { albo = r.data.albo ? cleanAlbo(JSON.parse(r.data.albo)) : []; } catch (e) {}
+  const nm = checkName(r.name), name = nm.ok ? nm.name : '';
+  const game = sv && sv.P && sv.run ? `block #${fmt(sv.run.height)} · level ${sv.P.lvl}${noRanks(sv.run) ? '' : ` · ${rankOf(sv.P)}`}` : 'no game in progress';
+  showCenter(`<h2>PASSWORD ACCEPTED</h2>
+    <dl class="facts"><dt>Hero</dt><dd>${esc(name || 'HERO')}</dd><dt>Game</dt><dd>${esc(game)}</dd><dt>Legends</dt><dd>${albo.length}</dd></dl>
+    <p class="legend">Loading it replaces the progress on this device.</p>`);
+  const apply = () => {
+    try {
+      if (sv) localStorage.setItem(SKEY, JSON.stringify(sv)); else localStorage.removeItem(SKEY);
+      if (albo.length) localStorage.setItem(LKEY, JSON.stringify(albo)); else localStorage.removeItem(LKEY);
+      if (/^[a-f0-9]{32}$/.test(r.id || '')) localStorage.setItem(PKEY, JSON.stringify({id: r.id, name}));
+      localStorage.setItem(PWKEY, p);
+    } catch (e) {}
+    location.reload();
+  };
+  openMenu($('cmenu'), [{label: 'LOAD THIS GAME', act: apply}, {label: 'BACK', act: enterPassword}], {onBack: enterPassword});
+}
+
+/* ───────── Gioco ───────── */
+// Gradi del forum Bitcointalk (aperto da Satoshi nel 2009) in base al livello dell'eroe. Traguardo della storia: Legendary → Lead Maintainer.
+const RANKS = [[1, 'Newbie'], [3, 'Jr. Member'], [5, 'Member'], [8, 'Full Member'], [11, 'Sr. Member'], [15, 'Hero Member'], [20, 'Legendary']];
+const forumRank = l => RANKS.filter(([m]) => l >= m).pop()[1];
+const rankOf = p => p && p.lead ? 'Lead Maintainer' : forumRank(p ? p.lvl : 1);
+// Bitcoin History non ha la trama del forum: si sale solo di livello, senza gradi (in deviazione l'eroe resta quello della partita live)
+const noRanks = (r = run) => !!(r && r.mode === 'legend' && !r.detour);
+const lvLabel = p => noRanks() ? `LV ${p.lvl}` : `LV ${p.lvl} · ${rankOf(p).toUpperCase()}`;
+let promoted = null; // grado appena raggiunto (per l'avviso)
+const newPlayer = () => ({lvl: 1, hp: 32, maxhp: 32, atk: 9, def: 4, xp: 0, gold: 0, x: 0, y: 0});
+const xpNext = l => Math.round(12 + l * l * 7);
+const LKEY = 'pq-legends-v1';
+function loadAlbo() { try { return cleanAlbo(JSON.parse(localStorage.getItem(LKEY))); } catch (e) { return []; } }
+function addAlbo(b) { const a = loadAlbo(); if (!a.some(x => x.h === b.height)) a.push({h: b.height, pool: b.pool, at: Date.now()}); try { localStorage.setItem(LKEY, JSON.stringify(a)); } catch (e) {} return a.length; }
+function save() { try { localStorage.setItem(SKEY, JSON.stringify({P, run})); } catch (e) {} autoSync(); }
+function loadSave() { try { return cleanSave(JSON.parse(localStorage.getItem(SKEY))); } catch (e) { return null; } }
+// Salvataggi (localStorage o PASSWORD): si tengono solo i campi noti, col tipo giusto. Così un salvataggio manipolato
+// (per esempio una password passata da qualcuno) non può mettere HTML o script nelle schermate del gioco.
+const clampN = (v, min, max, d) => typeof v === 'number' && Number.isFinite(v) ? Math.min(max, Math.max(min, Math.round(v))) : d;
+function cleanP(p) {
+  if (!p || typeof p !== 'object') return null;
+  const o = {lvl: clampN(p.lvl, 1, 999, 1), hp: clampN(p.hp, 0, 1e6, 32), maxhp: clampN(p.maxhp, 1, 1e6, 32), atk: clampN(p.atk, 0, 1e6, 9),
+    def: clampN(p.def, 0, 1e6, 4), xp: clampN(p.xp, 0, 1e9, 0), gold: clampN(p.gold, 0, 1e12, 0), x: clampN(p.x, 0, 999, 0), y: clampN(p.y, 0, 999, 0)};
+  if (p.lead === true) o.lead = true;
+  return o;
+}
+function cleanRun(r, top = true) {
+  if (!r || typeof r !== 'object' || !['live', 'legend', 'pick'].includes(r.mode)) return null;
+  const o = {mode: r.mode, height: clampN(r.height, 0, 1e8, 0), depth: clampN(r.depth, 0, 1e6, 0), li: clampN(r.li, 0, 999, 0),
+    halvings: Array.isArray(r.halvings) ? r.halvings.filter(h => typeof h === 'number' && Number.isFinite(h)).slice(0, 64) : [],
+    id: typeof r.id === 'string' && /^[a-f0-9]{32}$/.test(r.id) ? r.id : randomId(), legends: clampN(r.legends, 0, 1e5, 0)};
+  for (const k of ['lastHeight', 'liveGold', 'spent', 'nextLegend']) if (typeof r[k] === 'number') o[k] = clampN(r[k], 0, 1e12, 0);
+  for (const k of ['fromHistory', 'readyToast', 'scrollHint', 'storyTold']) if (r[k] === true) o[k] = true;
+  if (r.spentBy && typeof r.spentBy === 'object') { o.spentBy = {}; for (const [k, v] of Object.entries(r.spentBy)) if (/^[a-z]{1,12}$/.test(k)) o.spentBy[k] = clampN(v, 0, 1e12, 0); }
+  if (top && r.detour) { const d = cleanRun(r.detour, false); if (d) o.detour = d; }
+  return o;
+}
+function cleanSave(s) { const P = s && cleanP(s.P), r = s && cleanRun(s.run); return P && r ? {P, run: r} : null; }
+const cleanAlbo = a => Array.isArray(a) ? a.filter(x => x && typeof x.h === 'number' && Number.isFinite(x.h)).slice(0, 5000)
+  .map(x => ({h: Math.round(x.h), pool: typeof x.pool === 'string' ? x.pool.slice(0, 40) : '', at: clampN(x.at, 0, 1e14, 0)})) : [];
+
+function showTitle() {
+  state = 'title'; floor = null; battle = null; closeMenu(); renderHud(); renderEbar(); $('menu').hidden = true;
+  setPalette(tip != null ? Math.floor(tip / 210000) : 4);
+  showCenter(`<p class="logo">PROOF OF<br><b>QUEST</b></p>
+    <p class="tag">Every Bitcoin block is a dungeon.</p>
+    <p class="status">${online ? `● NODE ONLINE · LATEST BLOCK #${fmt(tip)}` : `○ OFFLINE${HISTORY.length ? ` · ${HISTORY_NAME} ONLY` : ''}`}${loadAlbo().length ? ` · LEGENDS ${loadAlbo().length} ★` : ''}</p>`, true, 'title');
+  const sv = loadSave();
+  const canResume = sv && ((sv.run.mode === 'legend' && HISTORY.length) || online);
+  openMenu($('cmenu'), [
+    sv && {label: 'CONTINUE', sub: `block #${fmt(sv.run.height)} · level ${sv.P.lvl}`, disabled: !canResume, act: () => resume(sv)},
+    {label: 'NEW GAME', act: newGameMenu},
+    STORY.length && {label: 'INTRO', act: playStory},
+    {label: 'LEADERBOARD', act: showBoard},
+    {label: 'PASSWORD', act: showPassword},
+    {label: `AUDIO: ${soundOn ? 'ON' : 'OFF'}`, act: () => { soundOn = !soundOn; showTitle(); }},
+  ].filter(Boolean));
+  renderTop5(); loadBoard(5).then(renderTop5);
+  const preview = tipBlock || HISTORY[0] || LEGENDS[0];
+  renderBlockCard(preview, rules(preview), tipBlock ? 'LATEST BLOCK ON THE CHAIN' : HISTORY.length ? `${HISTORY_NAME} · ${CH_SHORT}` : 'GENESIS BLOCK');
+}
+function newGameMenu() {
+  state = 'height';
+  const sv = loadSave();
+  showCenter(`<h2>NEW GAME</h2><p>${sv ? `Your saved game (block #${fmt(sv.run.height)}, level ${sv.P.lvl}) will be replaced.` : 'Choose where to enter the chain.'}</p>`);
+  openMenu($('cmenu'), [
+    {label: 'LIVE GAME', sub: online ? 'the real chain, from 6 blocks ago · counts for the leaderboard' : 'needs a connection to mempool.space', disabled: !online, act: () => askName(() => newRun('live', tip - 5), newGameMenu)},
+    HISTORY.length && {label: HISTORY_NAME, sub: HIST.sub || 'not ranked', act: () => askName(() => newRun('legend', 0), newGameMenu)},
+    {label: 'PICK A BLOCK', sub: online ? 'any height · not ranked' : 'needs a connection to mempool.space', disabled: !online, act: chooseHeight},
+    {label: 'BACK', act: showTitle},
+  ].filter(Boolean), {onBack: showTitle});
+}
+function chooseHeight() {
+  state = 'height';
+  showCenter(`<h2>PICK A BLOCK</h2><p>Type a height between 0 and ${fmt(tip)}. The dungeon is born from that block's hash.</p>
+    <label for="hIn" class="status">HEIGHT</label><input id="hIn" type="number" inputmode="numeric" min="0" max="${tip}" value="${tip - 100}">
+    <p id="hErr" class="legend" hidden></p>`);
+  const go = () => {
+    const v = parseInt($('hIn').value, 10);
+    if (!(v >= 0 && v <= tip)) { const e = $('hErr'); e.hidden = false; e.textContent = `Enter a number between 0 and ${fmt(tip)}.`; SFX.bump(); return false; }
+    closeMenu(); askName(() => newRun('pick', v), chooseHeight); return true;
+  };
+  $('hIn').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); go(); } if (e.key === 'Escape') { e.preventDefault(); closeMenu(); newGameMenu(); } });
+  openMenu($('cmenu'), [{label: 'PLAY THIS BLOCK', act: () => { if (!go()) chooseHeight(); }}, {label: 'BACK', act: newGameMenu}], {onBack: newGameMenu});
+  setTimeout(() => { try { $('hIn').focus(); } catch (e) {} }, 30);
+}
+function newRun(mode, h) {
+  P = newPlayer();
+  run = {mode, height: mode === 'legend' ? HISTORY[0].height : h, depth: 0, li: 0, halvings: [], id: randomId(), legends: 0};
+  enterFloor();
+}
+function resume(s) {
+  P = s.P; run = s.run; if (!run.id) run.id = randomId();
+  if (run.mode !== 'legend' && tip != null && run.height > tip) return waitForBlock();
+  enterFloor();
+}
+async function enterFloor() {
+  state = 'loading'; battle = null; closeMenu(); renderHud(); renderEbar();
+  showCenter(`<h2>SYNCING BLOCK #${fmt(run.height)}…</h2><p>Downloading header and stats from mempool.space.</p>`);
+  let b;
+  try { b = await loadBlock(run.height); }
+  catch (err) {
+    showCenter(`<h2>BLOCK NOT AVAILABLE</h2><p>${esc(err.message || 'Network error.')} Check your connection and try again.</p>`);
+    openMenu($('cmenu'), [{label: 'RETRY', act: enterFloor}, {label: 'TITLE', act: showTitle}]);
+    return;
+  }
+  const R = rules(b, run.mode === 'live');
+  floor = genFloor(b, R, run.depth);
+  P.x = floor.start.x; P.y = floor.start.y;
+  computeVis(); setPalette(R.solo ? 'legend' : R.era);
+  renderBlockCard(b, R, run.mode === 'legend' ? `${CH_SHORT} · BLOCK ${Math.min(run.li + 1, HISTORY.length)}/${HISTORY.length}${run.detour ? ' · WHILE YOU WAIT' : ''}` : 'BLOCK IN PLAY');
+  save();
+  state = 'intro';
+  const odds = soloOdds(b.difficulty);
+  const chips = [R.solo && '★ LEGEND', R.hostile && 'HASHRATE FLEEING', !R.hostile && R.hashMod >= 1.15 && 'NETWORK UNDER STRAIN', R.hashMod <= .87 && 'FAST BLOCKS', R.lastRetarget != null && R.nEp < 144 && Math.abs(R.lastRetarget) >= .1 && 'RETARGET ' + pct(R.lastRetarget), R.storm && 'FEE WAR', R.calm && 'CALM MEMPOOL', R.vision >= 6 && 'LIGHTNING BLOCK', R.vision <= 3 && 'THICK FOG', R.halving && 'HALVING', R.retarget && !(R.lastRetarget != null && Math.abs(R.lastRetarget) >= .1) && 'RETARGET', R.empty && 'EMPTY BLOCK', R.genesis && 'GENESIS'].filter(Boolean);
+  showCenter(`<h2>BLOCK #${fmt(b.height)}</h2>
+    ${b.legend ? `<p class="legend">${esc(b.legend)}</p>` : ''}
+    <dl class="facts">
+      <dt>Mined by</dt><dd>${esc(b.pool === 'Unknown' ? 'unknown' : b.pool)}</dd>
+      <dt>Transactions</dt><dd>${fmt(b.tx)} → ${R.nEnemies} enemies</dd>
+      ${b.legend && !b.medianFee ? '' : `<dt>Median fee</dt><dd>${fmt(b.medianFee)} sat/vB</dd>`}
+      <dt>Guardian</dt><dd>${esc(R.boss)}</dd>
+      ${R.solo ? `<dt>A Bitaxe</dt><dd>1 chance in ${bigNum(odds.oneIn)} per block</dd>` : ''}
+      <dt>Depth</dt><dd>floor ${run.depth + 1} · ${R.eraInfo.name}</dd>
+      <dt>Network</dt><dd>${R.epAvg != null ? `average ${dur(Math.round(R.epAvg))} → enemies ${hashLabel(R.hashMod)}` : `enemies ${hashLabel(R.hashMod)}`}</dd>
+    </dl>
+    ${b.legend ? '' : `<p class="epi">"${esc(R.bossInfo.epi)}"</p>`}
+    ${chips.length ? `<div class="chips">${chips.map(c => `<span class="chip">${c}</span>`).join('')}</div>` : ''}`);
+  const canWait = R.hostile && (run.mode !== 'legend' || cache.has(R.nextRetarget));
+  if (liveReady()) setTimeout(() => toast(`BLOCK #${fmt(run.detour.height)} IS MINED!<br>RETURN TO THE LIVE GAME FROM THE MENU`), 300);
+  openMenu($('cmenu'), [
+    {label: 'ENTER THE BLOCK', act: beginFloor},
+    liveReady() && {label: 'RETURN TO THE LIVE GAME', sub: `block #${fmt(run.detour.height)} is mined`, act: returnToLive},
+    canWait && {label: 'WAIT FOR THE RETARGET', sub: `skip blocks up to #${fmt(R.nextRetarget)}, no loot`, act: waitRetarget},
+    {label: 'TITLE', act: showTitle},
+  ].filter(Boolean), {onBack: showTitle});
+}
+// Il giocatore rinuncia ai blocchi rimasti nell'epoca ostile e riprende dal primo blocco dopo il retarget.
+async function waitRetarget() {
+  const target = floor.R.nextRetarget;
+  if (run.mode === 'legend') { run.height = target; return enterFloor(); }
+  run.height = target;
+  await pollTip();
+  if (tip != null && target <= tip) return enterFloor();
+  waitForBlock();
+}
+async function beginFloor() {
+  hideCenter(); state = 'explore'; renderHud();
+  const R = floor.R, b = floor.b;
+  if (!run.storyTold && (run.depth === 0 || run.fromHistory) && !run.detour && run.mode !== 'legend') { // la trama del forum non c'entra con Bitcoin History
+    run.storyTold = true;
+    await say(`${hn()} is a ${rankOf(P).toUpperCase()} on the Bitcoin forum. Prove your work block by block, earn the trust of the network, become the LEAD MAINTAINER.`);
+  }
+  if (R.halving && !run.halvings.includes(b.height)) {
+    run.halvings.push(b.height); P.maxhp += 10; P.hp = P.maxhp; SFX.level(); renderHud();
+    await say(`HALVING! The subsidy drops to ${fmt(ERAS[Math.min(R.era, ERAS.length - 1)].sub)} BTC. Your heart grows stronger: max HP +10.`);
+  }
+  if (R.solo) {
+    const o = soloOdds(b.difficulty);
+    flashUntil = performance.now() + 900; shakeUntil = performance.now() + 900; SFX.legend();
+    await say(`The ground shakes. Block #${fmt(b.height)} was solo-mined on ${b.pool}: one single miner against the whole network.`);
+    await say(`With a 1.2 TH/s Bitaxe you would have 1 chance in ${bigNum(o.oneIn)} per block: ${bigNum(o.years)} years of waiting on average.`);
+    await say('The LONE MINER materializes next to the stairs. An extremely rare event: do not waste it.');
+  }
+  if (R.hostile) {
+    await say(`HASHRATE FLEEING. In this epoch blocks arrive every ${dur(Math.round(R.epAvg))} instead of 10 minutes: difficulty is too high for the remaining network.`);
+    await say(`Enemies are ${hashLabel(R.hashMod)} stronger until the retarget at block #${fmt(R.nextRetarget)} corrects the difficulty (estimate ${pct(R.retargetEst)}).`);
+  } else if (R.lastRetarget != null && R.nEp < 144 && Math.abs(R.lastRetarget) >= .1) {
+    await say(`A retarget just happened at block #${fmt(R.ep.start)}: difficulty ${pct(R.lastRetarget)}. The network is back in balance.`);
+  }
+  if (floor.items.some(i => i.type === 'tablet')) await say('A stone tablet glows next to you. Step on it to read it.');
+  if (floor.items.some(i => i.type === 'scroll') && !run.scrollHint) { run.scrollHint = true; await say(`${HISTORY_NAME}${CHAPTER ? ' · ' + CHAPTER : ''}. Scrolls are hidden in every block: walk over them to read.`); }
+  if (R.empty) await say('Empty block: no transactions, only the guardian.');
+  if (R.storm) await say(`Fee war at ${fmt(b.medianFee)} sat/vB: enemies and chests are full of sats.`);
+  if (R.retarget) await say('Difficulty retarget: a shrine awaits you in this room.');
+  if (!R.solo) await say(`${R.boss} guards the stairs to the next block. A swings your sword, hold B to raise your shield. Healing and parrying cost sats: your sats are your score.`);
+  save();
+}
+/* ───────── Combattimento sulla mappa, in tempo reale a caselle ─────────
+   I nemici si muovono da soli, anche se l'eroe sta fermo. A = fendente nella casella davanti all'eroe, B tenuto premuto = scudo.
+   Prima di colpire un nemico si prepara per un attimo (punto esclamativo): è il momento di colpirlo per primo o di alzare lo scudo.
+   Lo scudo para solo i colpi che arrivano davanti e respinge il nemico di una casella. Sulla mappa niente magie: solo pozioni dal MENU.
+   Mosse: fast = più rapido, ghost = passa nei muri, revive = si rialza una volta, rich = lascia più sats. */
+const WEAPON = 'Private Key', SHIELD = 'Cold Storage';
+// Tempi in millisecondi e forza dei colpi nemici sulla mappa (atk). Se li cambi, rilancia la simulazione del bot (README, Bilanciamento).
+const RT = {act: 560, fast: 330, windup: 420, recover: 520, swordCd: 300, swing: 200, iframes: 650, chase: .8, step: 120, revive: 3000, atk: 2.2};
+/* Niente pozioni, eteri o MP: ci si cura, si para e si lanciano magie spendendo sats, e i sats sono il punteggio.
+   Prezzi FISSI, uguali in ogni blocco (decisione di Mario: il giocatore deve sapere sempre quanto costa ogni cosa).
+   heal = +50% HP (sulla mappa con il tasto HEAL, o nell'arena), parry = ogni colpo parato con lo scudo, bolt = fulmine nell'arena. */
+const COST = {heal: 60, parry: 8, bolt: 120};
+const cost = k => COST[k];
+function spend(n, why) { const s = Math.min(P.gold, n); P.gold -= s; run.spent = (run.spent || 0) + s; if (why) { run.spentBy = run.spentBy || {}; run.spentBy[why] = (run.spentBy[why] || 0) + s; } return s; }
+let simNow = null; // i test possono guidare il tempo a mano
+const clock = () => simNow ?? performance.now();
+const hero = {dir: [0, 1], shield: false, swingAt: -1e9, iframeUntil: 0};
+const enemyAt = (x, y) => floor.enemies.find(e => !e.dead && e.x === x && e.y === y);
+const facing = e => P.x + hero.dir[0] === e.x && P.y + hero.dir[1] === e.y;
+function tryMove(dx, dy) {
+  const now = clock(); hero.dir = [dx, dy];
+  if (hero.shield) return; // con lo scudo alzato ci si gira ma non si cammina
+  if (now - lastMove < RT.step) return; lastMove = now;
+  const nx = P.x + dx, ny = P.y + dy;
+  const en = enemyAt(nx, ny);
+  if (en) { if (en.boss) startBattle(en); return; } // contro un nemico ti giri verso di lui: si colpisce con A
+  const t = floor.g[ny] && floor.g[ny][nx];
+  if (t === undefined || t === 1) { SFX.bump(); return; }
+  const it = floor.items.find(i => i.x === nx && i.y === ny);
+  if (it && it.type === 'chest' && !it.opened) { openChest(it); return; }
+  if (it && it.type === 'tablet') { say('"The Times 03/Jan/2009 Chancellor on brink of second bailout for banks." This is where it all began.'); return; }
+  P.x = nx; P.y = ny; computeVis();
+  if (scrollLog) { scrollLog = false; $('log').hidden = true; }
+  if (it && it.type === 'scroll') { if (!it.read) { it.read = true; SFX.chest(); } log(`${it.n}/${it.of} · ${it.text}`, 4000); scrollLog = true; return; }
+  if (it && it.type === 'shrine' && !it.used) { it.used = true; P.hp = P.maxhp; SFX.heal(); renderHud(); say('The retarget shrine recalibrates you: HP fully restored, for free.'); return; }
+  if (t === 2) {
+    if (!floor.boss.dead) { say(`${floor.boss.name} seals the stairs. Defeat it to write the next block.`); return; }
+    descend(); return;
+  }
+  talk();
+}
+const dmgCalc = (atk, def) => Math.max(1, Math.round(atk * (.85 + Math.random() * .3) - def * .5));
+function swordStrike() {
+  const now = clock();
+  if (hero.shield || now - hero.swingAt < RT.swordCd) return;
+  hero.swingAt = now; SFX.swing();
+  const e = enemyAt(P.x + hero.dir[0], P.y + hero.dir[1]);
+  if (!e) return;
+  if (e.boss) { startBattle(e); return; }
+  if (e.bonesUntil) { SFX.bump(); return; } // le ossa non si possono colpire: aspetta che si rialzi
+  let d = dmgCalc(P.atk, e.def); const crit = Math.random() < .08; if (crit) d = Math.round(d * 1.8);
+  e.hp -= d; e.hitUntil = performance.now() + 200; SFX.hit();
+  floatText(d, {x: e.x, y: e.y}, crit ? 2 : 3);
+  if (e.hp <= 0) mapKill(e);
+  renderHud();
+}
+function mapKill(e) {
+  if (e.trait === 'revive' && !e.revived) { // crolla in un mucchio di ossa e si rialza dopo RT.revive ms
+    e.revived = true; e.hp = 0; e.windup = 0; e.bonesUntil = clock() + RT.revive; SFX.crumble();
+    log(`${e.name} collapses... but the bones are still moving!`); return;
+  }
+  e.dead = true; SFX.win();
+  P.xp += e.xp; P.gold += e.gold;
+  floatText('+' + e.gold, {x: e.x, y: e.y - .6}, 2);
+  let msg = `${e.name} defeated: +${e.xp} XP, +${fmt(e.gold)} sats.`;
+  log(msg);
+  const ups = levelUps();
+  if (ups.length) { toast(promoted ? `PROMOTED!<br>${promoted.toUpperCase()}` : `LEVEL UP! LV ${P.lvl}`); log(ups[ups.length - 1]); }
+  save();
+}
+// Applica i livelli guadagnati e restituisce i messaggi da mostrare
+function levelUps() {
+  const out = [], before = forumRank(P.lvl); promoted = null;
+  while (P.xp >= xpNext(P.lvl)) {
+    P.xp -= xpNext(P.lvl); P.lvl++; P.maxhp += 9; P.atk += 3; P.def += 2; P.hp = P.maxhp;
+    SFX.level();
+    out.push(`${hn()} reaches level ${P.lvl}! HP ${P.maxhp}, ATK ${P.atk}, DEF ${P.def}.`);
+  }
+  const now = forumRank(P.lvl);
+  if (now !== before && !noRanks()) {
+    promoted = now;
+    out.push(`PROMOTED! The forum now lists ${hn()} as ${now.toUpperCase()}.`);
+    if (now === 'Legendary' && !P.lead) setTimeout(leadFinale, 600);
+  }
+  renderHud();
+  return out;
+}
+// Finale della storia: a Legendary l'eroe diventa Lead Maintainer (una volta per eroe)
+async function leadFinale() {
+  if (P.lead) return;
+  P.lead = true; SFX.legend(); flashUntil = performance.now() + 900; renderHud(); save();
+  while (dlg) await new Promise(r => setTimeout(r, 200));
+  await say(`The community has spoken: ${hn()} is LEGENDARY.`);
+  await say('The maintainers open the door: you are now the LEAD MAINTAINER of the code.');
+  await say('Even the Lead Maintainer does not own Bitcoin. Nobody does. You keep the code; the network keeps you honest.');
+}
+// Il nemico vede l'eroe: casella in vista E dentro lo schermo, lontano dall'HUD in alto e dalla riga dei messaggi in basso
+function onScreen(e) {
+  const {camX, camY} = cam(), vx = e.x - camX, vy = e.y - camY;
+  return vx >= 0 && vx < VW && vy >= 2 && vy <= VH - 3 - Math.ceil(CTL / TS) && floor.vis[e.y] && floor.vis[e.y][e.x];
+}
+// Ogni tipo di nemico parla una volta per piano, solo quando lo vedi davvero
+function talk() {
+  for (const e of floor.enemies) {
+    if (e.dead || e.boss || e.bonesUntil || floor.met.has(e.spr)) continue;
+    if (Math.abs(e.x - P.x) + Math.abs(e.y - P.y) > 6 || !onScreen(e)) continue;
+    floor.met.add(e.spr); log(`${e.name}: "${e.line}"`); return;
+  }
+}
+function enemyStrike(e, now) {
+  if (hero.shield && facing(e)) { // parata: nessun danno e il nemico viene respinto
+    SFX.parry(); e.hitUntil = performance.now() + 120;
+    const c = spend(cost('parry'), 'parry'); floatText(c ? '-' + c : '0', {x: P.x, y: P.y}, 2); renderHud();
+    const bx = e.x + hero.dir[0], by = e.y + hero.dir[1];
+    if (canStand(e, bx, by)) { e.x = bx; e.y = by; }
+    return;
+  }
+  if (now < hero.iframeUntil) return;
+  const d = Math.max(1, Math.round(dmgCalc(e.atk, P.def) * RT.atk));
+  P.hp = Math.max(0, P.hp - d); hero.iframeUntil = now + RT.iframes;
+  heroHitUntil = performance.now() + 220; shakeUntil = performance.now() + 120; SFX.hurt();
+  floatText(d, {x: P.x, y: P.y}, 2);
+  renderHud();
+}
+function canStand(e, x, y) {
+  if (x <= 0 || y <= 0 || x >= floor.W - 1 || y >= floor.H - 1) return false;
+  if (e.trait !== 'ghost' && floor.g[y][x] !== 0) return false;
+  if (x === P.x && y === P.y) return false;
+  const br = floor.bossRoom; if (br && x >= br.x && x < br.x + br.w && y >= br.y && y < br.y + br.h) return false; // la stanza del boss è solo sua
+  return !floor.enemies.some(o => o !== e && !o.dead && o.x === x && o.y === y) && !floor.items.some(i => i.x === x && i.y === y);
+}
+function mapEnemyAct(e, now) {
+  const adj = Math.abs(P.x - e.x) + Math.abs(P.y - e.y) === 1;
+  const fast = e.trait === 'fast';
+  if (e.windup) { // il colpo preparato parte adesso, se l'eroe è ancora lì
+    e.windup = 0; if (adj) enemyStrike(e, now);
+    e.nextAct = now + RT.recover * (fast ? .75 : 1); return;
+  }
+  if (adj) { e.windup = now; e.nextAct = now + RT.windup * (fast ? .8 : 1); return; }
+  const sees = floor.vis[e.y] && floor.vis[e.y][e.x];
+  const ddx = P.x - e.x, ddy = P.y - e.y;
+  let opts = [];
+  if (sees && Math.random() < RT.chase) {
+    const hx = [Math.sign(ddx), 0], vy = [0, Math.sign(ddy)];
+    opts = (Math.abs(ddx) > Math.abs(ddy) ? [hx, vy] : [vy, hx]).filter(([dx, dy]) => dx || dy);
+  } else if (Math.random() < .35) opts = [[[1, 0], [-1, 0], [0, 1], [0, -1]][Math.floor(Math.random() * 4)]];
+  const step = opts.find(([dx, dy]) => canStand(e, e.x + dx, e.y + dy));
+  if (step) { e.x += step[0]; e.y += step[1]; }
+  e.nextAct = now + (fast ? RT.fast : RT.act) * (.85 + Math.random() * .3);
+}
+// Battito del tempo reale: gira solo mentre esplori, si ferma con dialoghi, menu, pausa e arena
+let lastTickAt = 0;
+function mapTick() {
+  if (state !== 'explore' || dlg || menu || battle || !floor || !P) return;
+  const now = clock();
+  // dopo una pausa (dialogo, menu, finestra in background) i timer ripartono da dove erano
+  const gap = now - lastTickAt; lastTickAt = now;
+  if (gap > 250) for (const e of floor.enemies) {
+    if (e.nextAct !== undefined) e.nextAct += gap;
+    if (e.windup) e.windup += gap;
+    if (e.bonesUntil) e.bonesUntil = Math.min(e.bonesUntil + gap, now + RT.revive);
+  }
+  for (const e of floor.enemies) {
+    if (e.dead || e.boss) continue;
+    if (e.bonesUntil) {
+      if (now < e.bonesUntil) continue;
+      e.bonesUntil = 0; e.hp = Math.round(e.maxhp * .5); e.nextAct = now + RT.act; e.hitUntil = performance.now() + 250; SFX.heal();
+      log(`${e.name} pulls itself back together!`); continue;
+    }
+    if (e.nextAct === undefined || e.nextAct > now + 5000) e.nextAct = now + 500 + Math.random() * 500;
+    if (now < e.nextAct) continue;
+    mapEnemyAct(e, now);
+    if (P.hp <= 0) { defeat(); return; }
+  }
+  talk();
+}
+function openChest(it) {
+  it.opened = true; SFX.chest();
+  const c = it.content;
+  if (c.kind === 'gold') { P.gold += c.n; say(`The chest holds ${fmt(c.n)} sats.`); }
+  else { P.atk += 2; P.def += 2; say('Nonce Shard! More zeros in the hash, more relics. ATK +2, DEF +2.'); }
+  renderHud(); save();
+}
+async function descend() {
+  SFX.stairs(); run.depth++; run.lastHeight = run.height;
+  submitScore(); setTimeout(syncPassword, 2500);
+  if (BOARD_ON && !lsGet('pq-pass-told')) { try { localStorage.setItem('pq-pass-told', '1'); } catch (e) {} setTimeout(() => log('Your game is saved online. PASSWORD in the title menu continues it on another device.'), 1800); }
+  P.hp = Math.min(P.maxhp, P.hp + Math.round(P.maxhp * .25)); // una conferma in più: piccolo recupero
+  if (run.mode === 'legend') {
+    run.li++;
+    if (run.li >= HISTORY.length) return legendsEnd();
+    run.height = HISTORY[run.li].height; return enterFloor();
+  }
+  run.height++;
+  await pollTip();
+  if (tip != null && run.height <= tip) return enterFloor();
+  waitForBlock();
+}
+let nonceTimer = 0;
+function waitForBlock() {
+  state = 'waiting'; floor = floor || null; battle = null; renderHud(); save();
+  showCenter(`<h2>YOU HAVE REACHED THE PRESENT</h2>
+    <p>${tip != null && run.height - tip > 1
+      ? `You are waiting for the retarget at block #${fmt(run.height)}: ${fmt(run.height - tip)} blocks to go. The game resumes by itself when it is mined.`
+      : `Block #${fmt(run.height)} does not exist yet. Miners are searching for a valid hash: when they find it, the next floor opens by itself.`}</p>
+    <p class="nonce" id="nonceTxt"></p>
+    <p id="waitStats" class="status"></p>`);
+  updateWait();
+  clearInterval(nonceTimer);
+  nonceTimer = setInterval(() => {
+    if (state !== 'waiting') { clearInterval(nonceTimer); return; }
+    const n = $('nonceTxt'); if (n) n.textContent = 'NONCE 0x' + Math.floor(Math.random() * 4294967295).toString(16).padStart(8, '0') + ' → ' + Array.from({length: 16}, () => '0123456789abcdef'[Math.floor(Math.random() * 16)]).join('') + '…';
+  }, 110);
+  openMenu($('cmenu'), [
+    HISTORY.length && {label: `PLAY ${HISTORY_NAME}`, sub: 'while you wait · return to the live game from the MENU when the block is mined', act: startDetour},
+    {label: 'TITLE', act: showTitle},
+  ].filter(Boolean));
+}
+/* ───────── Deviazione nei blocchi leggendari ─────────
+   Quando la partita live raggiunge un blocco non ancora minato, si può giocare ai blocchi leggendari con lo stesso eroe.
+   La partita live resta da parte in run.detour; quando il blocco atteso viene minato arriva un avviso e nel MENU si accende
+   "RETURN TO THE LIVE GAME". Si torna solo quando lo sceglie il giocatore. Livello, oggetti e statistiche restano;
+   i sats raccolti nei blocchi leggendari no (la classifica conta solo la catena viva). */
+const liveReady = () => !!(run && run.detour && tip != null && tip >= run.detour.height);
+function startDetour() {
+  const live = run, li = (live.nextLegend || 0) % HISTORY.length;
+  run = {mode: 'legend', height: HISTORY[li].height, depth: live.depth, li, halvings: live.halvings, id: live.id, legends: live.legends, detour: live, liveGold: P.gold};
+  enterFloor();
+}
+function returnToLive() {
+  const live = run.detour;
+  live.nextLegend = run.li + 1 >= HISTORY.length ? 0 : run.li + 1; // la prossima volta si riparte dal blocco leggendario successivo
+  live.halvings = run.halvings;
+  P.gold = run.liveGold;
+  run = live; battle = null; hideCenter(); closeMenu();
+  if (tip != null && run.height <= tip) return enterFloor();
+  waitForBlock();
+}
+function updateWait() {
+  const el = $('waitStats'); if (!el) return;
+  const ago = tipBlock ? Math.max(0, Math.floor(Date.now() / 1000 - tipBlock.ts)) : null;
+  el.textContent = [ago != null && `LATEST BLOCK ${dur(ago)} AGO`, mempool && `MEMPOOL ${fmt(mempool.count)} TX`, liveFees && `FEE ${liveFees.fastestFee} SAT/VB`].filter(Boolean).join(' · ');
+}
+function onNewBlock(b) {
+  if (isSolo(b.pool)) {
+    SFX.legend(); flashUntil = performance.now() + 1200;
+    toast(`★ LEGEND! ★<br>#${fmt(b.height)} SOLO-MINED ON ${esc(b.pool).toUpperCase()}<br>THE LONE MINER AWAITS`);
+  } else {
+    SFX.block();
+    toast(`NEW BLOCK #${fmt(b.height)}<br>${esc(b.pool)} · ${fmt(b.tx)} TX`);
+  }
+  if (state === 'waiting' && run && run.height <= b.height) { closeMenu(); enterFloor(); }
+  else if (run && run.detour && b.height >= run.detour.height && !run.readyToast) {
+    run.readyToast = true; save();
+    setTimeout(() => { SFX.legend(); toast(`BLOCK #${fmt(run.detour.height)} IS MINED!<br>RETURN TO THE LIVE GAME FROM THE MENU`); }, 5200);
+  }
+}
+// Fine del capitolo 1: "continua" e pulsante per sostenere lo sviluppo (le donazioni non danno nulla nel gioco)
+function legendsEnd() {
+  state = 'end'; battle = null; renderHud(); save();
+  const tbc = `<h2>${esc(HEND.title)}</h2>${HEND.text ? `<p class="legend">${esc(HEND.text)}</p>` : ''}`;
+  const support = SUPPORT_URL && {label: '⚡ SUPPORT', sub: CONTENT.supportSub || '', act: () => { try { window.open(SUPPORT_URL, '_blank', 'noopener'); } catch (e) {} legendsEnd(); }};
+  if (run.detour) {
+    showCenter(`${tbc}<p>${liveReady() ? `Block #${fmt(run.detour.height)} is mined: your live game is ready.` : `Block #${fmt(run.detour.height)} is not mined yet.`}</p>`);
+    openMenu($('cmenu'), [
+      {label: 'RETURN TO THE LIVE GAME', sub: liveReady() ? `block #${fmt(run.detour.height)}` : 'wait for the block there', act: returnToLive},
+      support,
+      {label: HEND.again, act: () => { run.li = 0; run.height = HISTORY[0].height; enterFloor(); }},
+      {label: 'TITLE', act: showTitle},
+    ].filter(Boolean));
+    return;
+  }
+  showCenter(`${tbc}<p>${HISTORY.length} blocks, level ${P.lvl}, ${fmt(P.gold)} sats collected. ${online ? 'Your hero can continue on the live chain.' : 'To continue on the live chain, open the game where mempool.space is reachable.'}</p>`);
+  openMenu($('cmenu'), [
+    {label: 'CONTINUE ON THE LIVE CHAIN', sub: 'from here the game counts for the leaderboard', disabled: !online, act: () => { run = {mode: 'live', height: tip - 5, depth: run.depth, li: 0, halvings: run.halvings, id: randomId(), legends: 0, fromHistory: true}; enterFloor(); }},
+    support,
+    {label: 'TITLE', act: () => { try { localStorage.removeItem(SKEY); } catch (e) {} showTitle(); }},
+  ].filter(Boolean));
+}
+// MENU: pausa con le opzioni di gioco (la cura è sul tasto HEAL)
+function openPause() {
+  state = 'pause'; hero.shield = false; $('log').hidden = true;
+  showCenter(`<h2>PAUSE</h2><dl class="facts"><dt>Level</dt><dd>${P.lvl} · XP ${P.xp}/${xpNext(P.lvl)}</dd><dt>HP</dt><dd>${P.hp}/${P.maxhp}</dd>${noRanks() ? '' : `<dt>Rank</dt><dd>${rankOf(P)}</dd>`}<dt>ATK / DEF</dt><dd>${P.atk} / ${P.def}</dd><dt>Gear</dt><dd>${WEAPON} · ${SHIELD}</dd><dt>Spent</dt><dd>${fmt(run.spent || 0)} sats on healing, shield and spells</dd><dt>Sats</dt><dd>${fmt(P.gold)}</dd><dt>Floors</dt><dd>${run.depth + 1}</dd><dt>Legends</dt><dd>${loadAlbo().length}</dd></dl>`);
+  const back = () => { hideCenter(); state = 'explore'; renderHud(); };
+  openMenu($('cmenu'), [
+    {label: 'RESUME', act: back},
+    run.detour && {label: 'RETURN TO THE LIVE GAME', sub: liveReady() ? `block #${fmt(run.detour.height)} is mined · sats from legendary blocks stay here` : `waiting for block #${fmt(run.detour.height)} to be mined…`, disabled: !liveReady(), act: returnToLive},
+    {label: `AUDIO: ${soundOn ? 'ON' : 'OFF'}`, act: () => { soundOn = !soundOn; openPause(); }},
+    {label: 'SAVE AND QUIT TO TITLE', act: () => { save(); syncPassword(); showTitle(); }},
+  ].filter(Boolean), {onBack: back});
+}
+// HEAL: finestrella della cura, il gioco si ferma finché è aperta. Sulla mappa ci si cura solo così, pagando in sats.
+function healMap() {
+  const c = cost('heal'); if (P.gold < c || P.hp >= P.maxhp) return false;
+  spend(c, 'heal'); const h = Math.round(P.maxhp * .5); P.hp = Math.min(P.maxhp, P.hp + h); SFX.heal();
+  hero.iframeUntil = clock() + 400; floatText('+' + h, {x: P.x, y: P.y}, 3); floatText('-' + c, {x: P.x, y: P.y - .7}, 2); renderHud(); save(); return true;
+}
+function openItems() {
+  hero.shield = false; $('log').hidden = true;
+  const back = () => { $('menu').hidden = true; };
+  const c = cost('heal');
+  openMenu($('menu'), [
+    {label: `HEAL +50% HP · ${fmt(c)} SATS`, sub: P.gold < c ? 'not enough sats' : `you have ${fmt(P.gold)}`, disabled: P.gold < c || P.hp >= P.maxhp, act: () => { back(); healMap(); }},
+    {label: 'BACK', act: back},
+  ], {hide: true, onBack: back});
+}
+
+/* ───────── Arena dei boss ─────────
+   Solo il guardiano del blocco e il Minatore Solitario si combattono nell'arena, a turni, con la mossa annunciata un turno prima. */
+async function startBattle(e) {
+  state = 'battle'; battle = {e, shakeE: 0}; hero.shield = false; $('log').hidden = true;
+  SFX.encounter(); renderHud(); renderEbar();
+  if (e.legendary) { flashUntil = performance.now() + 600; SFX.legend(); }
+  await say(e.legendary ? `The ${e.name.toUpperCase()} raises his pickaxe. ${e.epi}` : `${e.name} awakens! ${e.epi}`);
+  battleMenu();
+}
+function battleMenu() {
+  if (!battle) return;
+  renderHud(); renderEbar();
+  openMenu($('menu'), [
+    {label: 'ATTACK', act: () => turn('atk')},
+    {label: `BOLT · ${fmt(cost('bolt'))} SATS`, disabled: P.gold < cost('bolt'), act: () => turn('zap')},
+    {label: `HEAL · ${fmt(cost('heal'))} SATS`, disabled: P.gold < cost('heal'), act: () => turn('heal')},
+    {label: 'DEFEND', act: () => turn('def')},
+  ], {cols: 2, hide: true});
+}
+const ENEMY_AT = {arena: true, px: 186, py: 22}, HERO_AT = {arena: true, px: 66, py: 92};
+async function turn(kind) {
+  const e = battle.e;
+  battle.turn = (battle.turn || 0) + 1;
+  battle.defending = false;
+  let zapped = false;
+  if (kind === 'atk' && battle.blind > 0 && (battle.blind--, Math.random() < .5)) {
+    battle.anim = {who: 'hero', t0: performance.now()}; SFX.bump(); await say('The headlamp blinds you: you miss.');
+  } else if (kind === 'atk') {
+    let d = dmgCalc(P.atk, e.def); const crit = Math.random() < .08; if (crit) d = Math.round(d * 1.8);
+    battle.anim = {who: 'hero', t0: performance.now()};
+    e.hp -= d; battle.shakeE = performance.now() + 300; SFX.hit(); renderEbar(); floatText(d, ENEMY_AT, crit ? 2 : 3);
+    await say(`${crit ? 'Critical hit! ' : ''}${hn()} strikes ${e.name}: ${d} damage.`);
+  } else if (kind === 'zap') {
+    const c = spend(cost('bolt'), 'bolt'); const d = Math.round(P.atk * 1.25 + 3 + Math.random() * 3); zapped = true; floatText('-' + c, HERO_AT, 2);
+    e.hp -= d; battle.shakeE = performance.now() + 400; flashUntil = performance.now() + 120; SFX.zap(); renderEbar(); renderHud(); floatText(d, ENEMY_AT, 2);
+    await say(`${hn()} casts a Lightning Network bolt on ${e.name}: ${d} damage.`);
+  } else if (kind === 'heal') {
+    const c = spend(cost('heal'), 'heal'); const h = Math.round(P.maxhp * .5); P.hp = Math.min(P.maxhp, P.hp + h); SFX.heal(); renderHud(); floatText('+' + h, HERO_AT, 3);
+    await say(`${hn()} recovers ${h} HP.`);
+  } else if (kind === 'def') {
+    battle.defending = true; renderHud();
+    await say('You raise your guard: much less damage this turn.');
+  }
+  if (e.hp <= 0) return victory();
+  if (e.legendary && battle.rebootPending && zapped) {
+    battle.rebootPending = false; battle.healed = true; battle.stunned = true;
+    flashUntil = performance.now() + 300; renderEbar();
+    await say('The bolt shorts out the Bitaxe! The reboot fails and the Lone Miner is stunned.');
+  }
+  await enemyAct(e);
+  battle.defending = false;
+  renderEbar();
+  if (P.hp <= 0) return defeat();
+  battleMenu();
+}
+async function enemyAct(e) {
+  const guard = battle.defending;
+  const hit = async (mult, text) => {
+    const d = Math.max(1, Math.round(dmgCalc(e.atk, P.def) * mult));
+    battle.anim = {who: 'enemy', t0: performance.now()};
+    P.hp = Math.max(0, P.hp - d); shakeUntil = performance.now() + 260; heroHitUntil = performance.now() + 300; SFX.hurt(); renderHud(); floatText(d, HERO_AT, 2);
+    await say(text.replace('{d}', d));
+  };
+  if (!e.legendary) {
+    // guardiano normale: la mossa speciale viene annunciata un turno prima, e Difendi la attutisce
+    if (battle.intent === 'special') {
+      battle.intent = null; renderEbar();
+      return guard ? hit(.55, `${e.name} unleashes ${e.move}, but you were on guard: {d} damage.`) : hit(1.6, `${e.name} unleashes ${e.move}: {d} damage!`);
+    }
+    await hit(guard ? .5 : 1, `${e.name} hits you: {d} damage.`);
+    if (P.hp > 0 && Math.random() < .22) { battle.intent = 'special'; renderEbar(); await say(`${e.name} is charging ${e.move}! DEFEND to soften the blow.`); }
+    return;
+  }
+  // Minatore Solitario: ogni mossa pericolosa è annunciata un turno prima. Chi legge i segnali vince, chi attacca e basta no.
+  if (battle.stunned) { battle.stunned = false; return say('The Lone Miner tries to restart his Bitaxe and loses the turn.'); }
+  if (battle.rebootPending) {
+    battle.rebootPending = false; battle.healed = true;
+    const h = Math.round(e.maxhp * .4); e.hp = Math.min(e.maxhp, e.hp + h); renderEbar(); SFX.heal(); floatText('+' + h, ENEMY_AT, 3);
+    return say(`The Bitaxe reboots: the fans spin again and the Lone Miner recovers ${h} HP.`);
+  }
+  if (battle.charging) {
+    battle.charging = false; flashUntil = performance.now() + 250; renderEbar();
+    return guard
+      ? hit(.75, 'LUCKY NONCE! You were on guard: only {d} damage.')
+      : hit(3.2, 'LUCKY NONCE! One chance in four billion, and he found it: {d} damage!');
+  }
+  if (!battle.healed && e.hp < e.maxhp * .5) {
+    battle.rebootPending = true; renderEbar();
+    return say('The fans of his Bitaxe slow down: he is about to reboot it. The heatsink stays exposed for one turn.');
+  }
+  if (!battle.blinded) {
+    battle.blinded = true; battle.blind = 2;
+    return hit(guard ? .3 : .6, 'The Lone Miner switches on his HEADLAMP: {d} damage, and the light blinds you!');
+  }
+  if (battle.turn >= 3 && (battle.turn - (battle.lastCharge || 0) >= 4 || Math.random() < .25)) {
+    battle.charging = true; battle.lastCharge = battle.turn; renderEbar();
+    return say('The Lone Miner stares at his miner screen: he is grinding a nonce and the hash is closing in on the target...');
+  }
+  await hit(guard ? .5 : 1, 'The Lone Miner hits you with his pickaxe: {d} damage.');
+  if (e.hp < e.maxhp * .3 && P.hp > 0) {
+    if (!battle.enraged) { battle.enraged = true; await say('He pushes his hashrate to the max: from now on he strikes twice per turn!'); }
+    await hit(guard ? .35 : .7, 'He strikes again: {d} damage!');
+  }
+}
+async function victory() {
+  const e = battle.e; e.dead = true; renderEbar(); SFX.win();
+  P.xp += e.xp; P.gold += e.gold; floatText('+' + e.gold, ENEMY_AT, 2);
+  await say(`${e.name} is defeated! +${e.xp} XP, +${fmt(e.gold)} sats.`);
+  for (const m of levelUps()) await say(m);
+  if (e.legendary) {
+    P.atk += 5; P.def += 5; P.maxhp += 20; P.hp = P.maxhp; SFX.legend(); renderHud();
+    await say("You obtain the LONE MINER'S NUGGET: ATK +5, DEF +5, max HP +20.");
+    run.legends = (run.legends || 0) + 1;
+    const n = addAlbo(floor.b);
+    await say(`Block #${fmt(floor.b.height)} enters your Hall of Legends (${n} ${n === 1 ? 'legend' : 'legends'}).`);
+  }
+  if (run.mode === 'legend' && floor.b.outro) await say(floor.b.outro);
+  const next = run.mode === 'legend' ? (HISTORY[run.li + 1] ? '#' + fmt(HISTORY[run.li + 1].height) : HEND.last) : '#' + fmt(floor.b.height + 1);
+  await say(`The stairs unlock. They lead to ${next}.`);
+  endBattle();
+}
+function endBattle() {
+  battle = null; state = 'explore'; closeMenu(); $('menu').hidden = true;
+  renderEbar(); computeVis(); renderHud(); save();
+}
+async function defeat() {
+  state = 'dead'; closeMenu(); $('menu').hidden = true; $('log').hidden = true; SFX.die();
+  await say(`${hn()} has fallen. REORG! The branch is orphaned and you go back to the start of the block, with half your sats.`);
+  P.gold = Math.floor(P.gold / 2); P.hp = P.maxhp;
+  battle = null; renderEbar();
+  floor = genFloor(floor.b, floor.R, run.depth); P.x = floor.start.x; P.y = floor.start.y; computeVis();
+  state = 'explore'; renderHud(); save();
+}
+
+/* ───────── STORY: presentazione animata stile anni '90 (come l'intro di Castlevania per NES) ─────────
+   Si apre solo dal menu del titolo (voce INTRO, solo se content.js porta i testi in CONTENT.intro). Circa 50 secondi, A / B / MENU la saltano.
+   Le scene si disegnano nel canvas su una "scena" di 256×192 (centrata sul telefono), i testi in #story. */
+const STORY = CONTENT.intro || [];
+let story = null, storyMusic = 0;
+const STORY_ENEMIES = ['slime', 'bat', 'ghost', 'skel', 'goblin', 'rat'];
+const STORY_POOLS = ['golem', 'ant', 'hydra', 'spider'];
+const GY = 138; // suolo delle scene: sotto c'è la fascia scura dei testi, come nelle intro NES
+function playStory() {
+  closeMenu(); hideCenter(); state = 'story'; floor = null; battle = null; renderHud();
+  setPalette(4);
+  story = {t0: performance.now(), i: -1};
+  $('story').hidden = false;
+  startStoryMusic();
+}
+function endStory() {
+  if (!story) return;
+  story = null; clearInterval(storyMusic); storyMusic = 0;
+  const el = $('story'); el.hidden = true; el.innerHTML = '';
+  showTitle();
+}
+// Musica: arpeggio in La minore, basso a ogni battuta (loop di 32 passi da 150 ms)
+function startStoryMusic() {
+  clearInterval(storyMusic);
+  const A = [220, 0, 262, 330, 440, 330, 262, 330, 196, 0, 247, 294, 392, 294, 247, 294, 175, 0, 220, 262, 349, 262, 220, 262, 165, 0, 208, 247, 330, 247, 330, 415];
+  const BASS = [110, 98, 87, 82];
+  let step = 0;
+  storyMusic = setInterval(() => {
+    if (!story) return;
+    const f = A[step % 32]; if (f) beep(f, .13, 'square', .028);
+    if (step % 8 === 0) beep(BASS[(step >> 3) % 4], .5, 'triangle', .06);
+    step++;
+  }, 150);
+}
+function storyScene(now) {
+  let lt = now - story.t0, i = 0;
+  while (i < STORY.length && lt >= STORY[i].d) { lt -= STORY[i].d; i++; }
+  return i >= STORY.length ? null : {i, lt, s: STORY[i]};
+}
+function drawStory(t) {
+  const now = performance.now(), sc = storyScene(now);
+  if (!sc) { endStory(); return; }
+  const oy = Math.max(0, Math.round((H() - CTL - 192) / 2)), k = $('screen').clientWidth / 256;
+  if (sc.i !== story.i) { // nuova scena: posiziona il testo
+    story.i = sc.i; const el = $('story');
+    el.className = sc.s.scene === 'title' ? 'big' : '';
+    el.style.top = (oy + sc.s.y) * k + 'px';
+    el.innerHTML = sc.s.scene === 'title' ? '<p class="logo">PROOF OF<br><b>QUEST</b></p><p class="press">PRESS A</p>' : '';
+  }
+  if (sc.s.text) { // testo che si scrive da solo
+    const n = reduced ? sc.s.text.length : Math.min(sc.s.text.length, Math.floor(Math.max(0, sc.lt - 500) / 38));
+    const el = $('story'); if (el.dataset.n !== String(n) || el.dataset.i !== String(sc.i)) { el.textContent = sc.s.text.slice(0, n); el.dataset.n = n; el.dataset.i = sc.i; }
+  }
+  ctx.translate(0, oy);
+  const lt = sc.lt, sky = (moon = true) => { // cielo stellato e luna
+    for (let j = 0; j < 70; j++) { const h = Math.imul(j + 7, 2654435761) >>> 0, x = h % 256, y = (h >> 9) % (GY - 8); ctx.fillStyle = (j + Math.floor(t / 400)) % 9 === 0 ? pal[3] : pal[1]; ctx.fillRect(x, y, 1, 1); }
+    if (moon) for (let y = -16; y <= 16; y++) for (let x = -16; x <= 16; x++) if (x * x + y * y <= 260) { ctx.fillStyle = (x + 4) * (x + 4) + (y + 3) * (y + 3) < 30 || (x - 6) * (x - 6) + (y - 5) * (y - 5) < 12 ? pal[2] : pal[3]; ctx.fillRect(206 + x, 36 + y, 1, 1); }
+  };
+  const ground = () => { ctx.fillStyle = pal[1]; ctx.fillRect(0, GY, 256, 4); ctx.fillStyle = pal[2]; ctx.fillRect(0, GY, 256, 1); };
+  // torre di blocchi: n blocchi alti 13 px che salgono dal suolo
+  const tower = (x, n, door) => {
+    for (let b = 0; b < n; b++) {
+      const y = GY - (b + 1) * 13;
+      ctx.fillStyle = pal[0]; ctx.fillRect(x - 1, y - 1, 46, 14);
+      ctx.fillStyle = pal[1]; ctx.fillRect(x, y, 44, 12);
+      ctx.fillStyle = pal[2]; ctx.fillRect(x, y, 44, 1); ctx.fillRect(x + 4, y + 4, 14 + (b * 7) % 18, 1); ctx.fillRect(x + 4, y + 7, 8 + (b * 11) % 22, 1);
+    }
+    if (n) { ctx.fillStyle = pal[1]; for (let m = 0; m < 4; m++) ctx.fillRect(x + m * 12, GY - n * 13 - 5, 8, 5); } // merli
+    if (door) { ctx.fillStyle = pal[0]; ctx.fillRect(x + 15, GY - 18, 14, 18); ctx.fillRect(x + 17, GY - 21, 10, 3); }
+  };
+  const bat = (x, y, f) => ctx.drawImage(spr(f ? 'bat_b' : 'bat'), Math.round(x), Math.round(y));
+  switch (sc.s.scene) {
+    case 'genesis': { // il blocco Genesis che si accende nel buio
+      const a = Math.min(1, lt / 2500);
+      ctx.globalAlpha = a; ctx.save(); ctx.translate(0, 34); tower(106, 1, false); ctx.restore(); ctx.globalAlpha = 1;
+      if (Math.floor(t / 500) % 2) { ctx.fillStyle = pal[3]; ctx.fillRect(127, GY + 14, 2, 2); }
+      break;
+    }
+    case 'tower': { sky(); ground(); const n = Math.min(10, 1 + Math.floor(lt / 500)); tower(150, n, true);
+      if (n < 10) { const f = (lt % 500) / 500; ctx.globalAlpha = .6; ctx.fillStyle = pal[2]; ctx.fillRect(150, GY - (n + 1) * 13 - Math.round((1 - f) * 40), 44, 12); ctx.globalAlpha = 1; }
+      break; }
+    case 'hero': { sky(); ground(); tower(170, 10, true);
+      const x = Math.min(150, -32 + lt / 30), step = Math.floor(t / 180) % 2;
+      ctx.drawImage(spr('heroSide'), Math.round(x), GY - 32 - step, 32, 32);
+      for (let j = 0; j < 3; j++) bat((lt / 18 + j * 90) % 300 - 30, 40 + j * 22 + Math.sin(t / 250 + j) * 6, Math.floor(t / 150 + j) % 2);
+      break; }
+    case 'bugs': { ground(); ctx.fillStyle = pal[1]; for (let j = 0; j < 30; j++) ctx.fillRect((j * 37) % 256, 20 + (j * 53) % 90, 2, 1);
+      STORY_ENEMIES.forEach((k2, j) => { const tj = lt - j * 900; if (tj < 0) return;
+        const x = 12 + j * 40, y = 64 + Math.round(Math.max(0, 1 - tj / 300) * -60);
+        ctx.drawImage(spr(anim(k2, t)), x, y, 32, 32); });
+      break; }
+    case 'pools': { sky(false); ground(); tower(106, 10, false);
+      const flash = Math.floor(lt / 1600) !== Math.floor((lt - 16) / 1600) || (lt % 1600) < 120;
+      STORY_POOLS.forEach((g, j) => { ctx.globalAlpha = flash ? 1 : .35; ctx.drawImage(spr(anim('g_' + g, t)), [22, 62, 162, 202][j], 6 + (j % 2) * 14, 32, 32); ctx.globalAlpha = 1; });
+      if (flash) { ctx.fillStyle = pal[3]; ctx.globalAlpha = .25; ctx.fillRect(0, 0, 256, 192); ctx.globalAlpha = 1; }
+      break; }
+    case 'climb': { sky(); ground(); tower(106, 11, true);
+      const yy = GY - 16 - Math.min(110, lt / 60);
+      ctx.drawImage(spr('heroUp'), 152, Math.round(yy));
+      break; }
+    case 'title': { sky(); ground(); tower(170, 10, true); ctx.drawImage(spr('heroUp'), 34, GY - 16); break; }
+  }
+  // dissolvenza in apertura e chiusura di ogni scena
+  const fade = Math.max(0, 1 - sc.lt / 400, 1 - (sc.s.d - sc.lt) / 400);
+  if (fade > 0) { ctx.globalAlpha = Math.min(1, fade); ctx.fillStyle = pal[0]; ctx.fillRect(0, -oy, 256, H()); ctx.globalAlpha = 1; }
+}
+
+/* ───────── Input ───────── */
+// I browser accendono l'audio solo dopo un gesto del giocatore: si riprova a ogni gesto.
+function unlockAudio() {
+  if (!soundOn) return;
+  try {
+    const fresh = !AC; audioCtx();
+    if (AC.state === 'closed') { AC = null; MASTER = null; audioCtx(); }
+    if (AC.state !== 'running') AC.resume().catch(() => { AC = null; MASTER = null; }); // se il sistema non lo ridà, al prossimo tocco se ne crea uno nuovo
+    if (fresh) beep(30, .02, 'square', .0001); // un suono muto dentro il gesto sblocca l'audio anche su iPhone
+  } catch (e) {}
+}
+['pointerdown', 'touchend', 'keydown'].forEach(ev => document.addEventListener(ev, unlockAudio, {capture: true, passive: true}));
+// Sul telefono, quando la finestra va in background, il sistema "interrompe" l'audio del web e spesso non lo ridà più.
+// Quindi: si mette in pausa il gioco, si chiude l'audio e al primo tocco dopo il ritorno se ne crea uno nuovo.
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) return;
+  hero.shield = false;
+  if (state === 'explore' && !dlg && !menu) openPause();
+  if (AC) { const old = AC; AC = null; MASTER = null; try { old.close().catch(() => {}); } catch (e) {} }
+});
+window.addEventListener('pagehide', () => { if (AC) { const old = AC; AC = null; MASTER = null; try { old.close().catch(() => {}); } catch (e) {} } });
+const KEYS = {ArrowUp: 'up', KeyW: 'up', ArrowDown: 'down', KeyS: 'down', ArrowLeft: 'left', KeyA: 'left', ArrowRight: 'right', KeyD: 'right',
+  KeyZ: 'a', Enter: 'a', Space: 'a', NumpadEnter: 'a', KeyX: 'b', Backspace: 'b', Escape: 'menu', KeyM: 'menu', KeyP: 'menu', KeyC: 'item', KeyI: 'item'};
+// a = spada / conferma, b = scudo (tenuto) / indietro, menu = pausa con le pozioni
+function input(a) {
+  unlockAudio();
+  if (state === 'story') { if (a === 'a' || a === 'b' || a === 'menu') endStory(); return; }
+  if (dlg) { if (a === 'a' || a === 'b') dlgAdvance(); return; }
+  if (menu) {
+    if (a === 'a') menuSelect();
+    else if (a === 'b' || a === 'menu' || a === 'item') { if (menu.onBack) { const f = menu.onBack; SFX.sel(); closeMenu(); f(); } }
+    else menuMove(a);
+    return;
+  }
+  if (state === 'explore') {
+    const d = {up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0]}[a];
+    if (d) tryMove(d[0], d[1]);
+    else if (a === 'a') swordStrike();
+    else if (a === 'b') hero.shield = true;
+    else if (a === 'menu') openPause();
+    else if (a === 'item') openItems();
+  }
+}
+function release(a) { if (a === 'b') hero.shield = false; }
+document.addEventListener('keydown', e => {
+  if (e.target && e.target.matches && e.target.matches('input, textarea')) return;
+  const a = KEYS[e.code]; if (!a) return;
+  if (e.target && e.target.closest && e.target.closest('.menu') && (a === 'a')) { e.preventDefault(); input(a); return; }
+  if (e.target && e.target.closest && e.target.closest('a')) return;
+  e.preventDefault();
+  if (e.repeat && (a === 'b' || a === 'menu' || a === 'item')) return;
+  input(a);
+});
+document.addEventListener('keyup', e => { const a = KEYS[e.code]; if (a) release(a); });
+window.addEventListener('blur', () => { hero.shield = false; });
+document.querySelectorAll('.pad button').forEach(b => {
+  let rep = 0;
+  const a = b.dataset.a, dir = ['up', 'down', 'left', 'right'].includes(a);
+  const stop = () => { clearInterval(rep); rep = 0; release(a); };
+  b.addEventListener('pointerdown', e => { e.preventDefault(); input(a); if (dir) { clearInterval(rep); rep = setInterval(() => input(a), 150); } });
+  ['pointerup', 'pointerleave', 'pointercancel'].forEach(t => b.addEventListener(t, stop));
+  b.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); input(a); } });
+  b.addEventListener('keyup', e => { if (e.key === 'Enter' || e.key === ' ') release(a); });
+  b.addEventListener('contextmenu', e => e.preventDefault());
+});
+
+/* ───────── Avvio ───────── */
+setInterval(() => {
+  const el = $('agoTxt'); if (el && tipBlock) el.textContent = dur(Math.max(0, Math.floor(Date.now() / 1000 - tipBlock.ts))) + ' ago';
+  if (state === 'waiting') updateWait();
+}, 1000);
+
+/* ───────── Computer o telefono ─────────
+   Telefono (puntatore "grossolano" o primo tocco sullo schermo): gioco a tutto schermo, controlli trasparenti sopra la mappa,
+   sfere in alto. In verticale si vedono più righe di mappa. Computer: niente pulsanti a schermo, si gioca con la tastiera. */
+function layout() {
+  TOUCH = document.body.classList.contains('touch');
+  const scr = $('screen');
+  let vh = 12, ctlPx = 0;
+  if (TOUCH && innerHeight > innerWidth * 1.05) {
+    vh = clamp(Math.floor(256 * innerHeight / innerWidth / TS), 12, 40);
+    const d = document.querySelector('.dpad').getBoundingClientRect();
+    ctlPx = Math.max(0, innerHeight - d.top + 8);
+  }
+  if (vh !== VH || cv.height !== vh * TS) { VH = vh; cv.height = VH * TS; ctx.imageSmoothingEnabled = false; }
+  const k = (scr.clientWidth || 256) / 256;
+  const gap = Math.max(0, (scr.clientHeight || 0) - VH * TS * k); // striscia sotto il canvas, se lo schermo non è un multiplo esatto delle caselle
+  CTL = Math.max(0, Math.round((ctlPx - (TOUCH && ctlPx ? gap : 0)) / k));
+  HERO_ROW = CTL ? clamp(Math.floor((VH - CTL / TS - 4) / 2), 4, VH >> 1) : VH >> 1;
+  ARENA_Y = CTL ? Math.max(0, H() - CTL - 192 - 64) : 0;
+  const dpr = devicePixelRatio || 1;
+  ocv.width = Math.round((scr.clientWidth || 256) * dpr); ocv.height = Math.round((scr.clientHeight || 192) * dpr);
+  OK = k * dpr;
+  scr.style.setProperty('--ctl', ctlPx + 'px');
+  scr.style.setProperty('--ay', ARENA_Y * k + 'px');
+  if (floor && P) computeVis();
+  renderHud();
+}
+function setTouch() { if (document.body.classList.contains('touch')) return; document.body.classList.add('touch'); layout(); }
+if (matchMedia('(pointer: coarse)').matches) document.body.classList.add('touch');
+addEventListener('touchstart', setTouch, {passive: true, capture: true});
+addEventListener('resize', () => layout());
+addEventListener('orientationchange', () => setTimeout(layout, 200));
+
+async function boot() {
+  layout();
+  { const b = document.querySelector('[data-a=item]'); b.textContent = `HEAL ${COST.heal} SATS`; b.setAttribute('aria-label', `Heal: ${COST.heal} sats`); }
+  requestAnimationFrame(frame);
+  const first = HISTORY[0] || LEGENDS[0];
+  renderBlockCard(first, rules(first), HISTORY.length ? `${HISTORY_NAME} · ${CH_SHORT}` : 'GENESIS BLOCK');
+  renderLive();
+  showCenter('<p class="status">CONNECTING TO THE CHAIN…</p>', true);
+  await pollTip();
+  if (online) { pollMempool(); setInterval(pollTip, 30000); setInterval(pollMempool, 60000); }
+  else setInterval(() => { if (!online) pollTip().then(() => { if (online && state === 'title') showTitle(); }); }, 60000);
+  showTitle();
+}
+window.PQ = window.TCQ = {myPassword, syncPassword, showPassword, tick: () => mapTick(), sword: () => swordStrike(), shield: on => { hero.shield = !!on; }, hero, RT, setClock: t => { simNow = t; }, onScreen: e => onScreen(e), move: (dx, dy) => { lastMove = -1e9; tryMove(dx, dy); }, turn: k => turn(k), rules, genFloor, SPR, LEGENDS, HISTORY, HIST_BOSS, EXTRA_BLOCKS, loadBlock, pollTip, soloOdds, loadAlbo, enterFloor, newRun, checkName, get player() { return player; }, get battle() { return battle; }, get state() { return state; }, get P() { return P; }, get floor() { return floor; }, get run() { return run; }, get story() { return story; }, playStory, endStory, rankOf, input, release, healMap: () => healMap(), cost: k => cost(k), startDetour, returnToLive, onNewBlock: b => onNewBlock(b)};
+boot();
+})();
+</script>
+
+</body>
+</html>

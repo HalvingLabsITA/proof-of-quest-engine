@@ -1,0 +1,14 @@
+// Proof of Quest su Cloudflare Workers: file del gioco (public/) + backend della classifica (src/worker.js) + database D1.
+// URL: https://<worker-name>.<your-subdomain>.workers.dev (change "name" to your own)
+{
+  "name": "proof-of-quest-engine",
+  "main": "src/worker.js",
+  "compatibility_date": "2025-10-01",
+  "assets": { "directory": "./public", "binding": "ASSETS" },
+  "workers_dev": true,
+  "preview_urls": true,
+  "d1_databases": [
+    // database_id viene scritto da ./setup-db.sh alla prima configurazione
+    { "binding": "DB", "database_name": "proof-of-quest", "database_id": "DA_CONFIGURARE" }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "name": "proof-of-quest-engine",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "serve": "python3 -m http.server 8742 --bind 127.0.0.1 --directory public",
+    "dev": "node scripts/sync-names.mjs && wrangler d1 execute proof-of-quest --local --file=schema.sql && wrangler dev --ip 127.0.0.1 --port 8742",
+    "setup-db": "./setup-db.sh",
+    "deploy": "./deploy.sh",
+    "preview": "./deploy.sh test"
+  },
+  "devDependencies": {
+    "wrangler": "^4"
+  }
+}
